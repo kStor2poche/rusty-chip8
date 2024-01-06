@@ -3,7 +3,7 @@ use crate::errors::InvalidAccessError;
 
 pub trait Memory16Bit {
     fn get(&self, addr: u16, len: u16) -> Result<&[u8], Box<dyn Error>>;
-    fn set(&mut self, addr: u16, content: Vec<u8>) -> Result<(), Box<dyn Error>>;
+    fn set(&mut self, addr: u16, content: &Vec<u8>) -> Result<(), Box<dyn Error>>;
 }
 
 pub struct Chip8Mem {
@@ -25,7 +25,7 @@ impl Memory16Bit for Chip8Mem {
        }
     }
 
-    fn set(&mut self, addr: u16, content: Vec<u8>) -> Result<(), Box<dyn Error>> {
+    fn set(&mut self, addr: u16, content: &Vec<u8>) -> Result<(), Box<dyn Error>> {
         if addr as usize + content.len() > 0xFFF {
             return Err(Box::new(InvalidAccessError::new(format!(
                         "Cannot set {} bytes starting from {}, too big for emulated memory !", content.len(), addr)

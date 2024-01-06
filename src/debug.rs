@@ -1,6 +1,6 @@
 use core::fmt;
 
-use crate::systems::Chip8;
+use crate::systems::{Chip8, CHIP8_DISP_BUF_ADDR, CHIP8_DISP_BUF_LEN};
 use crate::mem::Memory16Bit;
 
 impl fmt::Display for Chip8 {
@@ -28,10 +28,13 @@ impl fmt::Display for Chip8 {
                    VE : 0x{:02x}  \
                    VF : 0x{:02x}\n\
                    delay : 0x{:02x}  \
-                   sound : 0x{:02x}",
+                   sound : 0x{:02x}\n\
+                   Framebuffer : \n\
+                   {22:?}",
                    s.0, s.1, s.2,
                    s.3[0], s.3[1], s.3[2],   s.3[3],   s.3[4],   s.3[5],   s.3[6],   s.3[7],
                    s.3[8], s.3[9], s.3[0xA], s.3[0xB], s.3[0xC], s.3[0xD], s.3[0xE], s.3[0xF],
-                   s.4, s.5, u16::from_be_bytes([next_instr[0], next_instr[1]]))
+                   s.4, s.5, u16::from_be_bytes([next_instr[0], next_instr[1]]),
+                   s.6.get(CHIP8_DISP_BUF_ADDR, CHIP8_DISP_BUF_LEN).unwrap())
     }
 }

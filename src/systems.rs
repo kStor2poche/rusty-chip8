@@ -3,11 +3,10 @@ use rand::{Rng, rngs::ThreadRng};
 
 use crate::mem::{Chip8Mem, Memory16Bit};
 use crate::errors::{InvalidInstructionError, ProgramLoadingError};
-use crate::display;
 
 pub trait System {
     fn init() -> Self;
-    fn load_program(&mut self, program_data: Vec<u8>) -> Result<(), Box<dyn Error>>;
+    fn load_program(&mut self, program_data: &Vec<u8>) -> Result<(), Box<dyn Error>>;
     fn exec_instruction(&mut self) -> Result<(), Box<dyn Error>>;
 }
 
@@ -23,14 +22,19 @@ pub struct Chip8 {
 }
 
 const CHIP8_PC_START: u16 = 0x200;
-const CHIP8_MAX_PROG_SIZE: u16 = CHIP8_DISP_BUF_ADDR - CHIP8_PC_START;
-const CHIP8_DISP_BUF_ADDR: u16 = 0xF00;
-const CHIP8_DISP_BUF_LEN: u16 = 0x9F;
-const CHIP8_STACK_BASE_ADDR: u16 = 0xFA0;
+const CHIP8_MAX_PROG_SIZE: u16 = CHIP8_STACK_BASE_ADDR - CHIP8_PC_START;
+pub const CHIP8_DISP_BUF_ADDR: u16 = 0xF00;
+pub const CHIP8_DISP_BUF_LEN: u16 = 0x100;
+pub const CHIP8_DISP_WIDTH: u16 = 64;
+pub const CHIP8_DISP_HEIGHT: u16 = 32;
+const CHIP8_STACK_BASE_ADDR: u16 = 0xEA0;
 
 impl Chip8 {
     pub fn get_state(&self) -> (u16, u16, u16, &Vec<u8>, u8, u8, &Chip8Mem) {
         (self.i, self.sp, self.pc, &self.v, self.delay, self.sound, &(self.ram))
+    }
+    pub fn get_mem(&mut self) -> &mut Chip8Mem {
+        &mut self.ram
     }
 }
 
@@ -48,7 +52,7 @@ impl System for Chip8 {
         }
     }
 
-    fn load_program(&mut self, program_data: Vec<u8>) -> Result<(), Box<dyn Error>> {
+    fn load_program(&mut self, program_data: &Vec<u8>) -> Result<(), Box<dyn Error>> {
         if program_data.len() > CHIP8_MAX_PROG_SIZE as usize {
             return Err(Box::new(ProgramLoadingError::new(format!(
                         "Program too long, {} > 3,328 KB", program_data.len())
@@ -69,7 +73,7 @@ impl System for Chip8 {
                 match (b, m, l) {
 
                     (0x0, 0xE, 0x0) => { // CLS
-                        self.ram.set(CHIP8_DISP_BUF_ADDR, vec![0; CHIP8_DISP_BUF_LEN as usize]).unwrap();
+                        self.ram.set(CHIP8_DISP_BUF_ADDR, &vec![0; CHIP8_DISP_BUF_LEN as usize]).unwrap();
                     },
 
                     (0x0, 0xE, 0xE) => { // RTS
@@ -99,7 +103,10 @@ impl System for Chip8 {
 
             // 2 - CALL
             (0x2, b, m, l) => {
-                let _ = self.ram.set(self.sp, self.pc.to_be_bytes().to_vec());
+                if self.sp >= CHIP8_DISP_BUF_ADDR {
+                    return Err(Box::new(InvalidInstructionError::new("exceeded stack frame limit")));
+                }
+                let _ = self.ram.set(self.sp, &self.pc.to_be_bytes().to_vec());
                 self.sp += 2;
                 self.pc = u16::from_be_bytes([b , (m << 4) + l]);
             },
@@ -189,7 +196,21 @@ impl System for Chip8 {
             (0xC, x, b, l) => self.v[x as usize] = self.rng.gen_range(0..=255) & ((b << 4) + l),
 
             // D - DISP (draws sprite @ coord VX,VY, N pixels high, see wikipedia.org for exact spec)
-            (0xD, x, y, n) => todo!("{}{}{}", x, y, n),
+            (0xD, x, y, n) => {
+                let sprite;
+                match self.ram.get(self.i, n as u16) {
+                    Ok(slice) => sprite = slice.iter().cloned().collect::<Vec<u8>>(),
+                    Err(_err) => return Ok(()),
+                }
+                for j in 0..n as u16 {
+                    let _ = self.ram.set(CHIP8_DISP_BUF_ADDR + CHIP8_DISP_WIDTH * (j + self.v[y as usize] as u16) + self.v[x as usize] as u16,
+                                         &sprite.get(j as usize..j as usize).unwrap().to_vec());
+                    // TODO: set VF if a pixel is flipped. Maybe write another set function
+                    // for the video buffer ? (self.v[0xf] |= self.ram.set_disp_buf([...]))
+                    // will have to rewrite because it is not an write but a XOR
+                    // so that would rather mean a ram.xor function
+                }
+            },
 
             // E - INPT checking
             (0xE, b, m, l) => todo!("{}{}{}", b, m, l),
