@@ -2,7 +2,7 @@ use std::error::Error;
 
 mod systems;
 mod mem;
-mod display;
+mod io;
 mod errors;
 mod debug;
 
@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let program_data = open_bytes(path)?;
 
-    match display::chip8_display_loop(&program_data) {
+    match io::chip8_io_loop(&program_data) {
         Ok(_) => (),
         Err(err) => return Err(err),
     };

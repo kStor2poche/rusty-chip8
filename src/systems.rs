@@ -1,13 +1,15 @@
 use std::error::Error;
+use minifb::Window;
 use rand::{Rng, rngs::ThreadRng};
 
+use crate::io::chip8_get_key;
 use crate::mem::{Chip8Mem, Memory16Bit};
-use crate::errors::{InvalidInstructionError, ProgramLoadingError};
+use crate::errors::{InvalidInstructionError, ProgramLoadingError, UnvavailableIOError};
 
 pub trait System {
     fn init() -> Self;
     fn load_program(&mut self, program_data: &Vec<u8>) -> Result<(), Box<dyn Error>>;
-    fn exec_instruction(&mut self) -> Result<(), Box<dyn Error>>;
+    fn exec_instruction(&mut self, window: Option<&Window>) -> Result<(), Box<dyn Error>>;
 }
 
 pub struct Chip8 {
@@ -63,7 +65,7 @@ impl System for Chip8 {
                                                                 // real bad happens
     }
 
-    fn exec_instruction(&mut self) -> Result<(), Box<(dyn std::error::Error + 'static)>> {
+    fn exec_instruction(&mut self, window: Option<&Window>) -> Result<(), Box<(dyn std::error::Error + 'static)>> {
         let opcode = self.ram.get(self.pc, 2)
                              .map(|op| (op[0] >> 4, op[0] & 0x0F, op[1] >> 4, op[1] & 0x0F))
                              .expect(&format!("Couldn't read opcode at 0x{:X}", self.pc).to_string());
@@ -89,7 +91,7 @@ impl System for Chip8 {
                     },
 
                     err => return Err(Box::new(InvalidInstructionError::new(
-                                      format!("wrong operand \"0x{:X}\" for opcode 0x0 (should be 0x0E0 or 0x0EE)",
+                                      format!("wrong operand 0x{:X} for opcode 0x0 (should be 0x0E0 or 0x0EE)",
                                               u16::from_be_bytes([err.0, err.1 << 4 + err.2]))
                                       ))),
                 };
@@ -170,7 +172,7 @@ impl System for Chip8 {
                     },
 
                     err => return Err(Box::new(InvalidInstructionError::new(
-                                      format!("wrong operation \"0x{:X}\" for opcode 0x8 (should be 0x0 -> 0x7 or 0xE)",
+                                      format!("wrong operation 0x{:X} for opcode 0x8 (should be 0x0 -> 0x7 or 0xE)",
                                               err)
                                       ))),
                 }
@@ -195,27 +197,50 @@ impl System for Chip8 {
             // C - RAND (VX = rand() & BL)
             (0xC, x, b, l) => self.v[x as usize] = self.rng.gen_range(0..=255) & ((b << 4) + l),
 
-            // D - DISP (draws sprite @ coord VX,VY, N pixels high, see wikipedia.org for exact spec)
+            // D - DISP (draws sprite @ coord VX,VY, N pixels high)
             (0xD, x, y, n) => {
+                if n > 0xf {
+                    return Err(Box::new(InvalidInstructionError::new(format!("Trying to draw sprite with heigh {}. Height should be between 1 and 15 both included.", n))));
+                }
                 let sprite;
                 match self.ram.get(self.i, n as u16) {
-                    Ok(slice) => sprite = slice.iter().cloned().collect::<Vec<u8>>(),
-                    Err(_err) => return Ok(()),
+                    Ok(slice) => sprite = slice.to_vec(),
+                    Err(_err) => todo!(),
                 }
-                for j in 0..n as u16 {
-                    let _ = self.ram.set(CHIP8_DISP_BUF_ADDR + CHIP8_DISP_WIDTH * (j + self.v[y as usize] as u16) + self.v[x as usize] as u16,
-                                         &sprite.get(j as usize..j as usize).unwrap().to_vec());
-                    // TODO: set VF if a pixel is flipped. Maybe write another set function
-                    // for the video buffer ? (self.v[0xf] |= self.ram.set_disp_buf([...]))
-                    // will have to rewrite because it is not an write but a XOR
-                    // so that would rather mean a ram.xor function
+                self.v[0xF] = match Chip8Mem::draw_sprite(&mut self.ram,
+                                                          &sprite,
+                                                          self.v[x as usize],
+                                                          self.v[y as usize],
+                                                          n) {
+                    Ok(flag) => flag as u8,
+                    Err(err) => return Err(err),
                 }
             },
 
             // E - INPT checking
-            (0xE, b, m, l) => todo!("{}{}{}", b, m, l),
+            (0xE, b, m, l) => {
+                match window {
+                    Some(window) => {
+                        match (b, m, l) {
+                            (x, 0x9, 0xE) => if chip8_get_key(&window, self.v[x as usize]) {
+                                self.pc += 2;
+                            },
+                            (x, 0xA, 0x1) => if !chip8_get_key(&window, self.v[x as usize]) {
+                                self.pc += 2;
+                            },
+                            err => return Err(Box::new(InvalidInstructionError::new(
+                                              format!("wrong operand 0x{:X} for opcode 0xE (should be 0xE[X]9E or 0xE[X]A1)",
+                                                      u16::from_be_bytes([err.0, err.1 << 4 + err.2]))
+                                              ))),
+                        }
+                    }
+                    None => return Err(Box::new(UnvavailableIOError::new(
+                                "Can't fetch inputs while running headless"
+                                ))),
+                }
+            },
 
-            // F - INPT & SND related things
+            // F - MISC things
             (0xF, x, op_b, op_l) => {
                 match (x, (op_b << 4) + op_l) {
                     (x, _) => todo!("{}", x),
@@ -223,7 +248,7 @@ impl System for Chip8 {
             }
 
             err => return Err(Box::new(InvalidInstructionError::new(
-                        format!("invalid opcode \"0x{:X}\"",
+                        format!("invalid opcode 0x{:X}",
                                 u16::from_be_bytes([err.0 << 4 + err.1, err.2 << 4 + err.3]))
                         ))),
         };
