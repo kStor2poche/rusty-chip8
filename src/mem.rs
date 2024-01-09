@@ -4,6 +4,7 @@ use crate::{errors::InvalidAccessError, systems::{CHIP8_DISP_BUF_ADDR, CHIP8_DIS
 pub trait Memory16Bit {
     fn get(&self, addr: u16, len: u16) -> Result<&[u8], Box<dyn Error>>;
     fn set(&mut self, addr: u16, content: &Vec<u8>) -> Result<(), Box<dyn Error>>;
+    fn set_byte(&mut self, addr: u16, content: u8) -> Result<(), Box<dyn Error>>;
 }
 
 pub struct Chip8Mem {
@@ -63,7 +64,7 @@ impl Memory16Bit for Chip8Mem {
     fn set(&mut self, addr: u16, content: &Vec<u8>) -> Result<(), Box<dyn Error>> {
         if addr as usize + content.len() - 1 > 0xFFF {
             return Err(Box::new(InvalidAccessError::new(format!(
-                        "Cannot set 0x{:X} bytes starting from 0x{:X}, too big for emulated memory !", content.len(), addr)
+                        "Cannot set 0x{:X} bytes starting from 0x{:03X}, too big for emulated memory !", content.len(), addr)
                     )))
         }
 
@@ -78,6 +79,17 @@ impl Memory16Bit for Chip8Mem {
                            .collect(); // might just do it imperative, will save the copy
                                        // and allow us to work only on the rewritten part
                                        // and it'll be ok since not paralellized
+        Ok(())
+    }
+
+    fn set_byte(&mut self, addr: u16, content: u8) -> Result<(), Box<dyn Error>> {
+        if addr as usize > 0xFFF {
+            return Err(Box::new(InvalidAccessError::new(format!(
+                        "Cannot set a bytes starting from 0x{:03X}, too big for emulated memory !", addr)
+                    )))
+        }
+
+        self.ram[addr as usize] = content;
         Ok(())
     }
 }

@@ -2,9 +2,9 @@ use std::error::Error;
 use minifb::Window;
 use rand::{Rng, rngs::ThreadRng};
 
-use crate::io::chip8_get_key;
+use crate::io::{chip8_get_key, chip8_get_any_key};
 use crate::mem::{Chip8Mem, Memory16Bit};
-use crate::errors::{InvalidInstructionError, ProgramLoadingError, UnvavailableIOError};
+use crate::errors::{InvalidInstructionError, ProgramLoadingError, UnvavailableIOError, InvalidAccessError};
 
 pub trait System {
     fn init() -> Self;
@@ -30,6 +30,26 @@ pub const CHIP8_DISP_BUF_LEN: u16 = 0x100;
 pub const CHIP8_DISP_WIDTH: u16 = 64;
 pub const CHIP8_DISP_HEIGHT: u16 = 32;
 const CHIP8_STACK_BASE_ADDR: u16 = 0xEA0;
+const CHIP8_FONT_START: u16 = 0x50;
+const CHIP8_FONT_HEIGHT: u8 = 0x5;
+const CHIP8_FONT: [u8; 80] = [
+    0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
+    0x20, 0x60, 0x20, 0x20, 0x70, // 1
+    0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
+    0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+    0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+    0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+    0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+    0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+    0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+    0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+    0xF0, 0x90, 0xF0, 0x90, 0x90, // A
+    0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
+    0xF0, 0x80, 0x80, 0x80, 0xF0, // C
+    0xE0, 0x90, 0x90, 0x90, 0xE0, // D
+    0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
+    0xF0, 0x80, 0xF0, 0x80, 0x80  // F 
+];
 
 impl Chip8 {
     pub fn get_state(&self) -> (u16, u16, u16, &Vec<u8>, u8, u8, &Chip8Mem) {
@@ -60,9 +80,11 @@ impl System for Chip8 {
                         "Program too long, {} > 3,328 KB", program_data.len())
                         )))
         }
-        Ok(self.ram.set(CHIP8_PC_START, program_data).unwrap()) // shouldn't return an Err, so we
-                                                                // unwrap and panic if something
-                                                                // real bad happens
+        self.ram.set(CHIP8_FONT_START, &CHIP8_FONT.to_vec()).unwrap();
+        self.ram.set(CHIP8_PC_START, program_data).unwrap(); // shouldn't return an Err, so we
+                                                             // unwrap and panic if something
+                                                             // real bad happens
+        Ok(())
     }
 
     fn exec_instruction(&mut self, window: Option<&Window>) -> Result<(), Box<(dyn std::error::Error + 'static)>> {
@@ -86,12 +108,12 @@ impl System for Chip8 {
                                                CHIP8_STACK_BASE_ADDR)
                                        )));
                         }
-                        let addr_bytes = self.ram.get(self.pc, 2).unwrap();
+                        let addr_bytes = self.ram.get(self.sp, 2).unwrap();
                         self.pc = u16::from_be_bytes([addr_bytes[0], addr_bytes[1]]);
                     },
 
                     err => return Err(Box::new(InvalidInstructionError::new(
-                                      format!("wrong operand 0x{:X} for opcode 0x0 (should be 0x0E0 or 0x0EE)",
+                                      format!("wrong operand 0x{:03X} for opcode 0x0 (should be 0x0E0 or 0x0EE)",
                                               u16::from_be_bytes([err.0, err.1 << 4 + err.2]))
                                       ))),
                 };
@@ -111,6 +133,7 @@ impl System for Chip8 {
                 let _ = self.ram.set(self.sp, &self.pc.to_be_bytes().to_vec());
                 self.sp += 2;
                 self.pc = u16::from_be_bytes([b , (m << 4) + l]);
+                return Ok(())
             },
 
             // 3 - SKIP.EQ direct
@@ -229,7 +252,7 @@ impl System for Chip8 {
                                 self.pc += 2;
                             },
                             err => return Err(Box::new(InvalidInstructionError::new(
-                                              format!("wrong operand 0x{:X} for opcode 0xE (should be 0xE[X]9E or 0xE[X]A1)",
+                                              format!("wrong operand 0x{:03X} for opcode 0xE (should be 0xE[X]9E or 0xE[X]A1)",
                                                       u16::from_be_bytes([err.0, err.1 << 4 + err.2]))
                                               ))),
                         }
@@ -243,7 +266,75 @@ impl System for Chip8 {
             // F - MISC things
             (0xF, x, op_b, op_l) => {
                 match (x, (op_b << 4) + op_l) {
-                    (x, _) => todo!("{}", x),
+                    (x, 0x07) => self.v[x as usize] = self.delay,
+                    (x, 0x0A) => {
+                        match window {
+                            Some(window) => {
+                                match chip8_get_any_key(&window) {
+                                    Some(key) => self.v[x as usize] = key,
+                                    None => self.pc -= 2,
+                                }
+                            }
+                            None => return Err(Box::new(UnvavailableIOError::new(
+                                        "Can't fetch inputs while running headless"
+                                        ))),
+                        }
+                    },
+                    (x, 0x15) => self.delay = self.v[x as usize],
+                    (x, 0x18) => self.sound = self.v[x as usize],
+                    (x, 0x1E) => {
+                        let res = self.i.overflowing_add(self.v[x as usize] as u16);
+                        self.i = res.0;
+                        // self.v[0xF] = 1; // if u12 overflows (on amiga at least)
+                    },
+                    (x, 0x29) => {
+                        let offset = (self.v[x as usize] & 0x0F) as u16;
+                        self.i = CHIP8_FONT_START + CHIP8_FONT_HEIGHT as u16 * offset;
+                    },
+                    (x, 0x33) => { // DCB
+                        let byte = self.v[x as usize];
+                        match self.ram.set_byte(self.i, byte / 100) {
+                            Ok(()) => (),
+                            Err(err) => return Err(err),
+                        };
+                        match self.ram.set_byte(self.i+1, (byte % 100) / 10) {
+                            Ok(()) => (),
+                            Err(err) => return Err(err),
+                        };
+                        match self.ram.set_byte(self.i+2, byte % 10) {
+                            Ok(()) => (),
+                            Err(err) => return Err(err),
+                        };
+                    },
+                    (n, 0x55) => { // STORE
+                        if (self.i + n as u16) & 0x0F > 0xFFF {
+                            return Err(Box::new(InvalidAccessError::new(
+                                        format!("Cannot STORE {:X} bytes of data at 0x{:03X}",
+                                                n, self.i))));
+                        }
+                        for i in 0..n {
+                            match self.ram.set_byte(self.i + i as u16, self.v[i as usize]) {
+                                Ok(()) => (),
+                                Err(err) => return Err(err),
+                            }
+                        }
+                    },
+                    (n, 0x65) => { // LOAD
+                        if (self.i + n as u16) & 0x0F > 0xFFF {
+                            return Err(Box::new(InvalidAccessError::new(
+                                        format!("Cannot LOAD {:X} bytes of data from 0x{:03X}",
+                                                n, self.i))));
+                        }
+                        for i in 0..=n {
+                            match self.ram.get(self.i + i as u16, 1) {
+                                Ok(byte) => self.v[i as usize] = byte[0],
+                                Err(err) => return Err(err),
+                            }
+                        }
+                    }
+                    (x, b) => return Err(Box::new(InvalidInstructionError::new(
+                                format!("Wrong operand 0x{:03X} for opcode 0xF",
+                                        u16::from_be_bytes([x, b]))))),
                 }
             }
 
