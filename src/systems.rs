@@ -266,8 +266,8 @@ impl System for Chip8 {
             // F - MISC things
             (0xF, x, op_b, op_l) => {
                 match (x, (op_b << 4) + op_l) {
-                    (x, 0x07) => self.v[x as usize] = self.delay,
-                    (x, 0x0A) => {
+                    (x, 0x07) => self.v[x as usize] = self.delay, // MOVD
+                    (x, 0x0A) => { // WAITKEY
                         match window {
                             Some(window) => {
                                 match chip8_get_any_key(&window) {
@@ -280,14 +280,14 @@ impl System for Chip8 {
                                         ))),
                         }
                     },
-                    (x, 0x15) => self.delay = self.v[x as usize],
-                    (x, 0x18) => self.sound = self.v[x as usize],
-                    (x, 0x1E) => {
+                    (x, 0x15) => self.delay = self.v[x as usize], // RMOVD
+                    (x, 0x18) => self.sound = self.v[x as usize], // RMOVS
+                    (x, 0x1E) => { // ADDI
                         let res = self.i.overflowing_add(self.v[x as usize] as u16);
                         self.i = res.0;
                         // self.v[0xF] = 1; // if u12 overflows (on amiga at least)
                     },
-                    (x, 0x29) => {
+                    (x, 0x29) => { // LOADFNT
                         let offset = (self.v[x as usize] & 0x0F) as u16;
                         self.i = CHIP8_FONT_START + CHIP8_FONT_HEIGHT as u16 * offset;
                     },

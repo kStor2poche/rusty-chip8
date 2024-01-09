@@ -91,7 +91,7 @@ pub fn chip8_io_loop(program_data: &Vec<u8>) -> Result<(), Box<dyn Error>> {
 
     window.limit_update_rate(Some(std::time::Duration::from_micros(1429)));
 
-    while window.is_open() && !window.is_key_down(Key::Q) {
+    while window.is_open() && !window.is_key_down(Key::NumPad0) {
         window.update_with_buffer(&minifb_from_bytes(chip8.get_mem()
                                                       .get(systems::CHIP8_DISP_BUF_ADDR,
                                                            systems::CHIP8_DISP_BUF_LEN)
