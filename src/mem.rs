@@ -39,6 +39,11 @@ impl Chip8Mem {
           })
           .enumerate()
           .for_each(|(j,(_i, b))| {
+              if (x as usize)/8 == 7 {
+                  *b ^= sprite[j].checked_shr((x%8).into()).unwrap_or(0);
+                  flag |= *b ^ (sprite[j].checked_shr((x%8).into()).unwrap_or(0)) > 0;
+                  return;
+              }
               if j%2 == 0 {
                   *b ^= sprite[j/2].checked_shr((x%8).into()).unwrap_or(0);
                   flag |= *b ^ (sprite[j/2].checked_shr((x%8).into()).unwrap_or(0)) > 0;

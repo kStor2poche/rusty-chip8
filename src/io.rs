@@ -80,7 +80,7 @@ pub fn chip8_io_loop(program_data: &Vec<u8>) -> Result<(), Box<dyn Error>> {
             WindowOptions { borderless: false,
                             title: true,
                             resize: true,
-                            scale: minifb::Scale::X16,
+                            scale: minifb::Scale::X8,
                             scale_mode: minifb::ScaleMode::AspectRatioStretch,
                             topmost: false,
                             transparency: false,
@@ -99,9 +99,9 @@ pub fn chip8_io_loop(program_data: &Vec<u8>) -> Result<(), Box<dyn Error>> {
                                   systems::CHIP8_DISP_WIDTH as usize,
                                   systems::CHIP8_DISP_HEIGHT as usize)
               .unwrap();
-        if !window.is_key_pressed(Key::N, minifb::KeyRepeat::Yes) {
+        /*if !window.is_key_pressed(Key::N, minifb::KeyRepeat::Yes) {
             continue;
-        }
+        }*/
         match chip8.exec_instruction(Some(&window)) {
             Ok(_) => {
                 println!("{}", chip8);

@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::time::{Instant, Duration};
 use minifb::Window;
 use rand::{Rng, rngs::ThreadRng};
 
@@ -21,6 +22,7 @@ pub struct Chip8 {
     sound: u8,
     ram: Chip8Mem,
     rng: ThreadRng,
+    last_frame: Instant,
 }
 
 const CHIP8_PC_START: u16 = 0x200;
@@ -50,6 +52,7 @@ const CHIP8_FONT: [u8; 80] = [
     0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
     0xF0, 0x80, 0xF0, 0x80, 0x80  // F 
 ];
+const CHIP8_INSTR_P_S: u16 = 700;
 
 impl Chip8 {
     pub fn get_state(&self) -> (u16, u16, u16, &Vec<u8>, u8, u8, &Chip8Mem) {
@@ -71,6 +74,7 @@ impl System for Chip8 {
             sound: 0,
             ram: Chip8Mem::new(),
             rng: rand::thread_rng(),
+            last_frame: Instant::now(),
         }
     }
 
@@ -88,6 +92,11 @@ impl System for Chip8 {
     }
 
     fn exec_instruction(&mut self, window: Option<&Window>) -> Result<(), Box<(dyn std::error::Error + 'static)>> {
+        if self.last_frame.elapsed() >= Duration::from_nanos(16666666) {
+            self.sound = self.sound.saturating_sub(1);
+            self.delay = self.delay.saturating_sub(1);
+            self.last_frame = Instant::now();
+        }
         let opcode = self.ram.get(self.pc, 2)
                              .map(|op| (op[0] >> 4, op[0] & 0x0F, op[1] >> 4, op[1] & 0x0F))
                              .expect(&format!("Couldn't read opcode at 0x{:X}", self.pc).to_string());
@@ -161,15 +170,24 @@ impl System for Chip8 {
             (0x6, x, b, l) => self.v[x as usize] = (b<<4) + l,
 
             // 7 - INCR direct
-            (0x7, x, b, l) => self.v[x as usize] += (b<<4) + l, // carry flag unchanged
+            (0x7, x, b, l) => self.v[x as usize] = self.v[x as usize].overflowing_add((b<<4) + l).0, // carry flag unchanged
 
             // 8 - Register based ops
             (0x8, x, y, op) => {
                 match op {
                     0x0 => self.v[x as usize] = self.v[y as usize], // MOV
-                    0x1 => self.v[x as usize] |= self.v[y as usize], // OR
-                    0x2 => self.v[x as usize] &= self.v[y as usize], // AND
-                    0x3 => self.v[x as usize] ^= self.v[y as usize], // XOR
+                    0x1 => { // OR
+                        self.v[x as usize] |= self.v[y as usize];
+                        self.v[0xF] = 0x00;
+                    },
+                    0x2 => { // AND
+                        self.v[x as usize] &= self.v[y as usize];
+                        self.v[0xF] = 0x00;
+                    },
+                    0x3 => { // XOR
+                        self.v[x as usize] ^= self.v[y as usize];
+                        self.v[0xF] = 0x00;
+                    },
                     0x4 => { // ADD
                         let res = self.v[x as usize].overflowing_add(self.v[y as usize]);
                         self.v[x as usize] = res.0;
@@ -178,20 +196,26 @@ impl System for Chip8 {
                     0x5 => { // SUB
                         let res = self.v[x as usize].overflowing_sub(self.v[y as usize]);
                         self.v[x as usize] = res.0;
-                        self.v[0xF] = res.1 as u8;
+                        self.v[0xF] = 1 - (res.1 as u8);
                     },
                     0x6 => { // SHR
-                        self.v[0xF] = self.v[x as usize] & 0x01;
+                        // TODO: let this be configurable
+                        self.v[x as usize] = self.v[y as usize];
+                        let carry = self.v[x as usize] & 0x01;
                         self.v[x as usize] >>= 1;
+                        self.v[0xF] = carry;
                     },
                     0x7 => { // RSUB
                         let res = self.v[y as usize].overflowing_sub(self.v[x as usize]);
                         self.v[x as usize] = res.0;
-                        self.v[0xF] = res.1 as u8;
+                        self.v[0xF] = 1 - (res.1 as u8);
                     },
                     0xE => { // SHL
-                        self.v[0xF] = self.v[x as usize] & 0xF0;
-                        self.v[x as usize] <<= 1
+                        // TODO: let this be configurable
+                        self.v[x as usize] = self.v[y as usize];
+                        let carry = (self.v[x as usize] & 0x80) >> 7;
+                        self.v[x as usize] <<= 1;
+                        self.v[0xF] = carry;
                     },
 
                     err => return Err(Box::new(InvalidInstructionError::new(
@@ -283,8 +307,7 @@ impl System for Chip8 {
                     (x, 0x15) => self.delay = self.v[x as usize], // RMOVD
                     (x, 0x18) => self.sound = self.v[x as usize], // RMOVS
                     (x, 0x1E) => { // ADDI
-                        let res = self.i.overflowing_add(self.v[x as usize] as u16);
-                        self.i = res.0;
+                        self.i = (self.i + self.v[x as usize] as u16) & 0b0000111111111111;
                         // self.v[0xF] = 1; // if u12 overflows (on amiga at least)
                     },
                     (x, 0x29) => { // LOADFNT
@@ -312,12 +335,13 @@ impl System for Chip8 {
                                         format!("Cannot STORE {:X} bytes of data at 0x{:03X}",
                                                 n, self.i))));
                         }
-                        for i in 0..n {
+                        for i in 0..=n {
                             match self.ram.set_byte(self.i + i as u16, self.v[i as usize]) {
                                 Ok(()) => (),
                                 Err(err) => return Err(err),
                             }
                         }
+                        self.i = (self.i + n as u16 + 1) & 0b0000111111111111;
                     },
                     (n, 0x65) => { // LOAD
                         if (self.i + n as u16) & 0x0F > 0xFFF {
@@ -331,6 +355,7 @@ impl System for Chip8 {
                                 Err(err) => return Err(err),
                             }
                         }
+                        self.i = (self.i + n as u16 + 1) & 0b0000111111111111;
                     }
                     (x, b) => return Err(Box::new(InvalidInstructionError::new(
                                 format!("Wrong operand 0x{:03X} for opcode 0xF",
