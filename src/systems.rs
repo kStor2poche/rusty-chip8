@@ -230,7 +230,7 @@ impl System for Chip8 {
                     Ok(slice) => sprite = slice.to_vec(),
                     Err(_err) => todo!(),
                 }
-                self.v[0xF] = match Chip8Mem::draw_sprite(&mut self.ram,
+                self.v[0xF] = match Chip8Mem::load_sprite(&mut self.ram,
                                                           &sprite,
                                                           self.v[x as usize],
                                                           self.v[y as usize],

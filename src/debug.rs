@@ -1,13 +1,13 @@
 use core::fmt;
 
 use crate::systems::Chip8;
-use crate::mem::Memory16Bit;
+use crate::mem::{Memory16Bit, Chip8Mem};
 
 impl fmt::Display for Chip8 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = self.get_state();
-        let next_instr = s.6.get(s.2, 0x2).unwrap(); // can't get ram, apparently ??
-        write!(f, "Current state : \n\
+        let next_instr = s.6.get(s.2, 0x2).unwrap();
+        write!(f, "\x1b[1mCurrent state : \x1b[0m\n\
                    I : 0x{:03x}  \
                    SP : 0x{:03x}  \
                    PC : 0x{:03x} -> 0x{21:04x} (next instruction)\n\
@@ -28,10 +28,23 @@ impl fmt::Display for Chip8 {
                    VE : 0x{:02x}  \
                    VF : 0x{:02x}\n\
                    delay : 0x{:02x}  \
-                   sound : 0x{:02x}",
+                   sound : 0x{:02x}\n",
                    s.0, s.1, s.2,
                    s.3[0], s.3[1], s.3[2],   s.3[3],   s.3[4],   s.3[5],   s.3[6],   s.3[7],
                    s.3[8], s.3[9], s.3[0xA], s.3[0xB], s.3[0xC], s.3[0xD], s.3[0xE], s.3[0xF],
                    s.4, s.5, u16::from_be_bytes([next_instr[0], next_instr[1]]))
+    }
+}
+impl fmt::Display for Chip8Mem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let _ = write!(f, "\x1b[1mRAM dump :\x1b[0m\n");
+        self.dump().chunks_exact(0x10).enumerate().for_each(|(i,chnk)| {
+            let _ = write!(f, "\x1b[37m0x{:03X} :\x1b[0m {:02X}{:02X} {:02X}{:02X} {:02X}{:02X} {:02X}{:02X} \
+                                                         {:02X}{:02X} {:02X}{:02X} {:02X}{:02X} {:02X}{:02X}\n",
+                           i*0x10,
+                           chnk[0x0], chnk[0x1], chnk[0x2], chnk[0x3], chnk[0x4], chnk[0x5], chnk[0x6], chnk[0x7],
+                           chnk[0x8], chnk[0x9], chnk[0xA], chnk[0xB], chnk[0xC], chnk[0xD], chnk[0xE], chnk[0xF]);
+        });
+        Ok(())
     }
 }

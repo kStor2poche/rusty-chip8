@@ -40,7 +40,7 @@ pub fn chip8_get_key(window: &Window, key_byte: u8) -> bool {
         0xF => Key::NumPadSlash,
         _ => return false,
     };
-    window.is_key_pressed(key, minifb::KeyRepeat::No)
+    window.is_key_down(key)
 }
 
 pub fn chip8_get_any_key(window: &Window) -> Option<u8> {
@@ -91,7 +91,7 @@ pub fn chip8_io_loop(program_data: &Vec<u8>) -> Result<(), Box<dyn Error>> {
 
     window.limit_update_rate(Some(std::time::Duration::from_micros(1429)));
 
-    while window.is_open() && !window.is_key_down(Key::NumPad0) {
+    while window.is_open() && !window.is_key_down(Key::Q) {
         window.update_with_buffer(&minifb_from_bytes(chip8.get_mem()
                                                       .get(systems::CHIP8_DISP_BUF_ADDR,
                                                            systems::CHIP8_DISP_BUF_LEN)
@@ -99,15 +99,21 @@ pub fn chip8_io_loop(program_data: &Vec<u8>) -> Result<(), Box<dyn Error>> {
                                   systems::CHIP8_DISP_WIDTH as usize,
                                   systems::CHIP8_DISP_HEIGHT as usize)
               .unwrap();
-        /*if !window.is_key_pressed(Key::N, minifb::KeyRepeat::No) {
+        if !window.is_key_pressed(Key::N, minifb::KeyRepeat::Yes) {
             continue;
-        }*/
+        }
         match chip8.exec_instruction(Some(&window)) {
             Ok(_) => {
                 println!("{}", chip8);
+                if window.is_key_down(Key::D) {
+                    println!("{}", chip8.get_mem());
+                }
             },
-            Err(_err) => {
-                //return Err(err);
+            Err(err) => {
+                println!("\x1b[31;1;4mCore dumped :\x1b[0m \n");
+                println!("{}", chip8);
+                println!("{}", chip8.get_mem());
+                return Err(err);
             }
         };
     }

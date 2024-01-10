@@ -5,6 +5,7 @@ pub trait Memory16Bit {
     fn get(&self, addr: u16, len: u16) -> Result<&[u8], Box<dyn Error>>;
     fn set(&mut self, addr: u16, content: &Vec<u8>) -> Result<(), Box<dyn Error>>;
     fn set_byte(&mut self, addr: u16, content: u8) -> Result<(), Box<dyn Error>>;
+    fn dump(&self) -> &Vec<u8>;
 }
 
 pub struct Chip8Mem {
@@ -15,8 +16,7 @@ impl Chip8Mem {
     pub fn new() -> Self {
         Self { ram: vec![0; 4096] } // 4K ram
     }
-    pub fn draw_sprite(&mut self, sprite: &Vec<u8>, x_uncapped: u8, y_uncapped: u8, n: u8) -> Result<bool, Box<dyn Error>>{
-        // oh god... Some xor'ing magic needed... Pwwease don't hit to hawwd, bowwow checkew chan (aled)
+    pub fn load_sprite(&mut self, sprite: &Vec<u8>, x_uncapped: u8, y_uncapped: u8, n: u8) -> Result<bool, Box<dyn Error>>{
         // not too bad in the end :)
         let x = x_uncapped & CHIP8_DISP_WIDTH as u8 - 1;
         let y = y_uncapped & CHIP8_DISP_HEIGHT as u8 - 1;
@@ -30,7 +30,10 @@ impl Chip8Mem {
               let fb_x = i % (CHIP8_DISP_WIDTH as usize / 8);
               let fb_y = i / (CHIP8_DISP_WIDTH as usize / 8);
               x as usize/8 <= fb_x
-                  && fb_x <= (x as usize/8)+1
+                  && fb_x <= (x as usize/8)+1 // TO FIX: lorsqu'on écrit sur la dernière colonne, 
+                                              // seulement la moitié des slots demandés sont
+                                              // sélectionnés : on ne dessine donc que la moitié
+                                              // du sprite :(, une ligne sur 2 :(((
                   && y as usize <= fb_y 
                   && fb_y < (y + n) as usize
           })
@@ -91,5 +94,9 @@ impl Memory16Bit for Chip8Mem {
 
         self.ram[addr as usize] = content;
         Ok(())
+    }
+
+    fn dump(&self) -> &Vec<u8> {
+        &self.ram
     }
 }
