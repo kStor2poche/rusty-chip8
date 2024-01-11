@@ -104,10 +104,10 @@ pub fn chip8_io_loop(program_data: &Vec<u8>) -> Result<(), Box<dyn Error>> {
         }*/
         match chip8.exec_instruction(Some(&window)) {
             Ok(_) => {
-                println!("{}", chip8);
+                /*println!("{}", chip8);
                 if window.is_key_down(Key::D) {
                     println!("{}", chip8.get_mem());
-                }
+                }*/
             },
             Err(err) => {
                 println!("\x1b[31;1;4mCore dumped :\x1b[0m \n");
