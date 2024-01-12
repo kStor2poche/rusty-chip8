@@ -9,7 +9,7 @@ use crate::errors::{InvalidInstructionError, ProgramLoadingError, UnvavailableIO
 
 pub trait System {
     fn init() -> Self;
-    fn load_program(&mut self, program_data: &Vec<u8>) -> Result<(), Box<dyn Error>>;
+    fn load_program(&mut self, program_data: &[u8]) -> Result<(), Box<dyn Error>>;
     fn exec_instruction(&mut self, window: Option<&Window>) -> Result<(), Box<dyn Error>>;
 }
 
@@ -78,13 +78,13 @@ impl System for Chip8 {
         }
     }
 
-    fn load_program(&mut self, program_data: &Vec<u8>) -> Result<(), Box<dyn Error>> {
+    fn load_program(&mut self, program_data: &[u8]) -> Result<(), Box<dyn Error>> {
         if program_data.len() > CHIP8_MAX_PROG_SIZE as usize {
             return Err(Box::new(ProgramLoadingError::new(format!(
                         "Program too long, {} > 3,328 KB", program_data.len())
                         )))
         }
-        self.ram.set(CHIP8_FONT_START, &CHIP8_FONT.to_vec()).unwrap();
+        self.ram.set(CHIP8_FONT_START, &CHIP8_FONT).unwrap();
         self.ram.set(CHIP8_PC_START, program_data).unwrap(); // shouldn't return an Err, so we
                                                              // unwrap and panic if something
                                                              // real bad happens
@@ -123,7 +123,7 @@ impl System for Chip8 {
 
                     err => return Err(Box::new(InvalidInstructionError::new(
                                       format!("wrong operand 0x{:03X} for opcode 0x0 (should be 0x0E0 or 0x0EE)",
-                                              u16::from_be_bytes([err.0, err.1 << 4 + err.2]))
+                                              u16::from_be_bytes([err.0, (err.1 << 4) + err.2]))
                                       ))),
                 };
             },
@@ -139,7 +139,7 @@ impl System for Chip8 {
                 if self.sp >= CHIP8_DISP_BUF_ADDR {
                     return Err(Box::new(InvalidInstructionError::new("exceeded stack frame limit")));
                 }
-                let _ = self.ram.set(self.sp, &self.pc.to_be_bytes().to_vec());
+                let _ = self.ram.set(self.sp, &self.pc.to_be_bytes());
                 self.sp += 2;
                 self.pc = u16::from_be_bytes([b , (m << 4) + l]);
                 return Ok(())
@@ -249,11 +249,10 @@ impl System for Chip8 {
                 if n > 0xf {
                     return Err(Box::new(InvalidInstructionError::new(format!("Trying to draw sprite with heigh {}. Height should be between 1 and 15 both included.", n))));
                 }
-                let sprite;
-                match self.ram.get(self.i, n as u16) {
-                    Ok(slice) => sprite = slice.to_vec(),
+                let sprite = match self.ram.get(self.i, n as u16) {
+                    Ok(slice) => slice.to_vec(),
                     Err(_err) => todo!(),
-                }
+                };
                 self.v[0xF] = match Chip8Mem::load_sprite(&mut self.ram,
                                                           &sprite,
                                                           self.v[x as usize],
@@ -269,15 +268,15 @@ impl System for Chip8 {
                 match window {
                     Some(window) => {
                         match (b, m, l) {
-                            (x, 0x9, 0xE) => if chip8_get_key(&window, self.v[x as usize]) {
+                            (x, 0x9, 0xE) => if chip8_get_key(window, self.v[x as usize]) {
                                 self.pc += 2;
                             },
-                            (x, 0xA, 0x1) => if !chip8_get_key(&window, self.v[x as usize]) {
+                            (x, 0xA, 0x1) => if !chip8_get_key(window, self.v[x as usize]) {
                                 self.pc += 2;
                             },
                             err => return Err(Box::new(InvalidInstructionError::new(
                                               format!("wrong operand 0x{:03X} for opcode 0xE (should be 0xE[X]9E or 0xE[X]A1)",
-                                                      u16::from_be_bytes([err.0, err.1 << 4 + err.2]))
+                                                      u16::from_be_bytes([err.0, (err.1 << 4) + err.2]))
                                               ))),
                         }
                     }
@@ -294,7 +293,7 @@ impl System for Chip8 {
                     (x, 0x0A) => { // WAITKEY
                         match window {
                             Some(window) => {
-                                match chip8_get_any_key(&window) {
+                                match chip8_get_any_key(window) {
                                     Some(key) => self.v[x as usize] = key,
                                     None => self.pc -= 2,
                                 }
@@ -330,7 +329,7 @@ impl System for Chip8 {
                         };
                     },
                     (n, 0x55) => { // STORE
-                        if (self.i + n as u16) & 0x0F > 0xFFF {
+                        if self.i + (n as u16 & 0x0F) > 0xFFF {
                             return Err(Box::new(InvalidAccessError::new(
                                         format!("Cannot STORE {:X} bytes of data at 0x{:03X}",
                                                 n, self.i))));
@@ -344,7 +343,7 @@ impl System for Chip8 {
                         self.i = (self.i + n as u16 + 1) & 0b0000111111111111;
                     },
                     (n, 0x65) => { // LOAD
-                        if (self.i + n as u16) & 0x0F > 0xFFF {
+                        if self.i + (n as u16 & 0x0F) > 0xFFF {
                             return Err(Box::new(InvalidAccessError::new(
                                         format!("Cannot LOAD {:X} bytes of data from 0x{:03X}",
                                                 n, self.i))));
@@ -365,7 +364,7 @@ impl System for Chip8 {
 
             err => return Err(Box::new(InvalidInstructionError::new(
                         format!("invalid opcode 0x{:X}",
-                                u16::from_be_bytes([err.0 << 4 + err.1, err.2 << 4 + err.3]))
+                                u16::from_be_bytes([(err.0 << 4) + err.1, (err.2 << 4) + err.3]))
                         ))),
         };
         self.pc = (self.pc + 2) & 0b0000111111111111;

@@ -3,7 +3,7 @@ use crate::{errors::InvalidAccessError, systems::{CHIP8_DISP_BUF_ADDR, CHIP8_DIS
 
 pub trait Memory16Bit {
     fn get(&self, addr: u16, len: u16) -> Result<&[u8], Box<dyn Error>>;
-    fn set(&mut self, addr: u16, content: &Vec<u8>) -> Result<(), Box<dyn Error>>;
+    fn set(&mut self, addr: u16, content: &[u8]) -> Result<(), Box<dyn Error>>;
     fn set_byte(&mut self, addr: u16, content: u8) -> Result<(), Box<dyn Error>>;
     fn dump(&self) -> &Vec<u8>;
 }
@@ -16,10 +16,10 @@ impl Chip8Mem {
     pub fn new() -> Self {
         Self { ram: vec![0; 4096] } // 4K ram
     }
-    pub fn load_sprite(&mut self, sprite: &Vec<u8>, x_uncapped: u8, y_uncapped: u8, n: u8) -> Result<bool, Box<dyn Error>>{
+    pub fn load_sprite(&mut self, sprite: &[u8], x_uncapped: u8, y_uncapped: u8, n: u8) -> Result<bool, Box<dyn Error>>{
         // not too bad in the end :)
-        let x = x_uncapped & CHIP8_DISP_WIDTH as u8 - 1;
-        let y = y_uncapped & CHIP8_DISP_HEIGHT as u8 - 1;
+        let x = (x_uncapped & CHIP8_DISP_WIDTH as u8) - 1;
+        let y = (y_uncapped & CHIP8_DISP_HEIGHT as u8) - 1;
         let mut fb = self.get(CHIP8_DISP_BUF_ADDR, CHIP8_DISP_BUF_LEN)
                          .unwrap()
                          .to_owned();
@@ -49,10 +49,7 @@ impl Chip8Mem {
                   flag |= *b ^ (sprite[j/2].checked_shl((8-(x%8)).into()).unwrap_or(0)) > 0;
               }
           });
-        match self.set(CHIP8_DISP_BUF_ADDR, &fb) {
-            Err(err) => return Err(err),
-            _ => (),
-        };
+        self.set(CHIP8_DISP_BUF_ADDR, &fb)?;
         Ok(flag)
     }
 }
@@ -66,7 +63,7 @@ impl Memory16Bit for Chip8Mem {
         }
     }
 
-    fn set(&mut self, addr: u16, content: &Vec<u8>) -> Result<(), Box<dyn Error>> {
+    fn set(&mut self, addr: u16, content: &[u8]) -> Result<(), Box<dyn Error>> {
         if addr as usize + content.len() - 1 > 0xFFF {
             return Err(Box::new(InvalidAccessError::new(format!(
                         "Cannot set 0x{:X} bytes starting from 0x{:03X}, too big for emulated memory !", content.len(), addr)

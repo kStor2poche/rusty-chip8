@@ -37,10 +37,10 @@ impl fmt::Display for Chip8 {
 }
 impl fmt::Display for Chip8Mem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let _ = write!(f, "\x1b[1mRAM dump :\x1b[0m\n");
+        let _ = writeln!(f, "\x1b[1mRAM dump :\x1b[0m");
         self.dump().chunks_exact(0x10).enumerate().for_each(|(i,chnk)| {
-            let _ = write!(f, "\x1b[37m0x{:03X} :\x1b[0m {:02X}{:02X} {:02X}{:02X} {:02X}{:02X} {:02X}{:02X} \
-                                                         {:02X}{:02X} {:02X}{:02X} {:02X}{:02X} {:02X}{:02X}\n",
+            let _ = writeln!(f, "\x1b[37m0x{:03X} :\x1b[0m {:02X}{:02X} {:02X}{:02X} {:02X}{:02X} {:02X}{:02X} \
+                                                           {:02X}{:02X} {:02X}{:02X} {:02X}{:02X} {:02X}{:02X}",
                            i*0x10,
                            chnk[0x0], chnk[0x1], chnk[0x2], chnk[0x3], chnk[0x4], chnk[0x5], chnk[0x6], chnk[0x7],
                            chnk[0x8], chnk[0x9], chnk[0xA], chnk[0xB], chnk[0xC], chnk[0xD], chnk[0xE], chnk[0xF]);

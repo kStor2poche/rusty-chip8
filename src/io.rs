@@ -9,15 +9,15 @@ const MINIFB_COLOR_FG: u32 = 0xFFFF9900;
 
 fn minifb_from_bytes(bytes: &[u8]) -> Vec<u32> {
     bytes.iter()
-         .map(|c| vec![ if c & 0b10000000 == 0b10000000 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
-                        if c & 0b01000000 == 0b01000000 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
-                        if c & 0b00100000 == 0b00100000 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
-                        if c & 0b00010000 == 0b00010000 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
-                        if c & 0b00001000 == 0b00001000 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
-                        if c & 0b00000100 == 0b00000100 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
-                        if c & 0b00000010 == 0b00000010 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
-                        if c & 0b00000001 == 0b00000001 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},])
-         .flatten().collect::<Vec<u32>>()
+         .flat_map(|c| vec![ if c & 0b10000000 == 0b10000000 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
+                             if c & 0b01000000 == 0b01000000 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
+                             if c & 0b00100000 == 0b00100000 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
+                             if c & 0b00010000 == 0b00010000 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
+                             if c & 0b00001000 == 0b00001000 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
+                             if c & 0b00000100 == 0b00000100 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
+                             if c & 0b00000010 == 0b00000010 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
+                             if c & 0b00000001 == 0b00000001 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},])
+         .collect::<Vec<u32>>()
 }
 
 pub fn chip8_get_key(window: &Window, key_byte: u8) -> bool {
@@ -45,7 +45,7 @@ pub fn chip8_get_key(window: &Window, key_byte: u8) -> bool {
 
 pub fn chip8_get_any_key(window: &Window) -> Option<u8> {
     let keys = window.get_keys_pressed(minifb::KeyRepeat::Yes);
-    for key in keys {
+    if let Some(key) = keys.into_iter().next() {
         match key {
             Key::NumPad0 => return Some(0x0),
             Key::NumPad1 => return Some(0x1),
@@ -66,10 +66,10 @@ pub fn chip8_get_any_key(window: &Window) -> Option<u8> {
             _ => return None,
         };
     }
-    return None;
+    None
 }
 
-pub fn chip8_io_loop(program_data: &Vec<u8>) -> Result<(), Box<dyn Error>> {
+pub fn chip8_io_loop(program_data: &[u8]) -> Result<(), Box<dyn Error>> {
     let mut chip8 = Chip8::init();
     let _ = chip8.load_program(program_data);
 
