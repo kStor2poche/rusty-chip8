@@ -30,10 +30,7 @@ impl Chip8Mem {
               let fb_x = i % (CHIP8_DISP_WIDTH as usize / 8);
               let fb_y = i / (CHIP8_DISP_WIDTH as usize / 8);
               x as usize/8 <= fb_x
-                  && fb_x <= (x as usize/8)+1 // TO FIX: lorsqu'on écrit sur la dernière colonne, 
-                                              // seulement la moitié des slots demandés sont
-                                              // sélectionnés : on ne dessine donc que la moitié
-                                              // du sprite :(, une ligne sur 2 :(((
+                  && fb_x <= (x as usize/8)+1
                   && y as usize <= fb_y 
                   && fb_y < (y + n) as usize
           })
