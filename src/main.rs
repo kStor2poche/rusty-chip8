@@ -18,7 +18,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let program_data = open_bytes(path)?;
 
     match io::chip8_io_loop(&program_data) {
-        Ok(_) => (),
+        Ok(()) => (),
         Err(err) => return Err(err),
     };
     Ok(())

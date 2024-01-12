@@ -18,8 +18,8 @@ impl Chip8Mem {
     }
     pub fn load_sprite(&mut self, sprite: &[u8], x_uncapped: u8, y_uncapped: u8, n: u8) -> Result<bool, Box<dyn Error>>{
         // not too bad in the end :)
-        let x = (x_uncapped & CHIP8_DISP_WIDTH as u8) - 1;
-        let y = (y_uncapped & CHIP8_DISP_HEIGHT as u8) - 1;
+        let x = x_uncapped & (CHIP8_DISP_WIDTH as u8 - 1);
+        let y = y_uncapped & (CHIP8_DISP_HEIGHT as u8 - 1);
         let mut fb = self.get(CHIP8_DISP_BUF_ADDR, CHIP8_DISP_BUF_LEN)
                          .unwrap()
                          .to_owned();
