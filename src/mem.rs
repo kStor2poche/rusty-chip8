@@ -58,7 +58,7 @@ impl Memory16Bit for Chip8Mem {
     fn get(&self, addr: u16,len: u16) -> Result<&[u8], Box<dyn Error>> {
         let res = &self.ram.get(addr as usize..(addr as usize + len as usize));
         match res {
-            Some(_) => Ok(res.unwrap()),
+            Some(res_ok) => Ok(res_ok),
             None => Err(Box::new(InvalidAccessError::new(format!("Address 0x{:X} unreachable", addr))))
         }
     }
