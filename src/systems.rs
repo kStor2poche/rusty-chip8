@@ -247,7 +247,7 @@ impl System for Chip8 {
             // D - DISP (draws sprite @ coord VX,VY, N pixels high)
             (0xD, x, y, n) => {
                 if n > 0xf {
-                    return Err(Box::new(InvalidInstructionError::new(format!("Trying to draw sprite with heigh {}. Height should be between 1 and 15 both included.", n))));
+                    return Err(Box::new(InvalidInstructionError::new(format!("Trying to draw a sprite with height {}. Height should be between 1 and 15 both included.", n))));
                 }
                 let sprite = match self.ram.get(self.i, n as u16) {
                     Ok(slice) => slice.to_vec(),
