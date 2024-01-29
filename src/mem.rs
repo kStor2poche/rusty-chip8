@@ -70,17 +70,10 @@ impl Memory16Bit for Chip8Mem {
                     )))
         }
 
-        self.ram = self.ram.iter()
-                           .enumerate()
-                           .map(|(i, byte)| 
-                                if i>=addr as usize && i< addr as usize+content.len() {
-                                    content[i - addr as usize]
-                                } else {
-                                    *byte
-                                })
-                           .collect(); // might just do it imperative, will save the copy
-                                       // and allow us to work only on the rewritten part
-                                       // and it'll be ok since not paralellized
+        let _ = &mut self.ram[addr as usize..addr as usize+content.len()]
+                         .iter_mut()
+                         .enumerate()
+                         .for_each(|(i, byte)| *byte = content[i]);
         Ok(())
     }
 
