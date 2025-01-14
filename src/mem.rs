@@ -12,7 +12,7 @@ pub struct Chip8Mem {
     ram: Vec<u8>,
 }
 
-impl Chip8Mem {
+impl Chip8Mem { // FIXME: _please_ stop using vecs when not necessary at all
     pub fn new() -> Self {
         Self { ram: vec![0; 4096] } // 4K ram
     }
@@ -21,6 +21,7 @@ impl Chip8Mem {
         // unless ??
         //
         // TODO : do it without any cloning (even though minifb is clearly the bottleneck but shh)
+        //        or maybe lack of multithreading is (clearly more likely)
         let x = x_uncapped & (CHIP8_DISP_WIDTH as u8 - 1);
         let y = y_uncapped & (CHIP8_DISP_HEIGHT as u8 - 1);
         let mut fb = self.get(CHIP8_DISP_BUF_ADDR, CHIP8_DISP_BUF_LEN)
