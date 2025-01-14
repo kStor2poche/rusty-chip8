@@ -43,7 +43,7 @@ pub fn chip8_get_key(window: &Window, key_byte: u8) -> bool {
     window.is_key_down(key)
 }
 
-pub fn chip8_get_any_key(window: &Window) -> Option<u8> {
+pub fn chip8_get_any_key(window: &Window) -> Option<u8> { // FIXME: ugly, could strip "return"s
     let keys = window.get_keys_pressed(minifb::KeyRepeat::Yes);
     if let Some(key) = keys.into_iter().next() {
         match key {
@@ -69,7 +69,8 @@ pub fn chip8_get_any_key(window: &Window) -> Option<u8> {
     None
 }
 
-pub fn chip8_io_loop(program_data: &[u8]) -> Result<(), Box<dyn Error>> {
+pub fn chip8_io_loop(program_data: &[u8]) -> Result<(), Box<dyn Error>> { // FIXME: could we get
+                                                                          // some async, please??
     let mut chip8 = Chip8::init();
     let _ = chip8.load_program(program_data);
 

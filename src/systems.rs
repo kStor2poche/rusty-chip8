@@ -91,7 +91,7 @@ impl System for Chip8 {
         Ok(())
     }
 
-    fn exec_instruction(&mut self, window: Option<&Window>) -> Result<(), Box<(dyn std::error::Error + 'static)>> {
+    fn exec_instruction(&mut self, window: Option<&Window>) -> Result<(), Box<(dyn std::error::Error + 'static)>> { // TODO: handle async here too
         if self.last_frame.elapsed() >= Duration::from_nanos(16666666) {
             self.sound = self.sound.saturating_sub(1);
             self.delay = self.delay.saturating_sub(1);
@@ -246,7 +246,7 @@ impl System for Chip8 {
 
             // D - DISP (draws sprite @ coord VX,VY, N pixels high)
             (0xD, x, y, n) => {
-                if n > 0xf {
+                if n > 0xf { // --> FIXME: litteraly impossible, this if shouldn't exist
                     return Err(Box::new(InvalidInstructionError::new(format!("Trying to draw a sprite with height {}. Height should be between 1 and 15 both included.", n))));
                 }
                 let sprite = match self.ram.get(self.i, n as u16) {
@@ -291,7 +291,7 @@ impl System for Chip8 {
                 match (x, (op_b << 4) + op_l) {
                     (x, 0x07) => self.v[x as usize] = self.delay, // MOVD
                     (x, 0x0A) => { // WAITKEY
-                        match window {
+                        match window { // FIXME: replace with if let, this is ugly
                             Some(window) => {
                                 match chip8_get_any_key(window) {
                                     Some(key) => self.v[x as usize] = key,
