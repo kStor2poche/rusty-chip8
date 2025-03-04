@@ -1,39 +1,40 @@
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
 
-use std::error::Error;
-use std::sync::{Arc, RwLock};
-use std::time::Duration;
-use std::hash::Hasher;
+use systems::{CHIP8_DISP_HEIGHT, CHIP8_DISP_WIDTH};
 
-use crate::gui::Framework;
-use error_iter::ErrorIter as _;
-use log::error;
-use pixels::{Pixels, SurfaceTexture};
-use winit::dpi::LogicalSize;
-use winit::event::{Event, WindowEvent};
-use winit::event_loop::EventLoop;
-use winit::keyboard::KeyCode;
-use winit::window::WindowBuilder;
-use winit_input_helper::WinitInputHelper;
+//use std::hash::Hasher;
+use {
+    error_iter::ErrorIter as _,
+    log::error,
+    pixels::{Pixels, SurfaceTexture},
+    std::{
+        error::Error,
+        sync::{Arc, RwLock},
+        time::Duration
+    },
+    winit::{
+        dpi::LogicalSize,
+        event::{Event, WindowEvent},
+        event_loop::EventLoop,
+        keyboard::KeyCode,
+        window::WindowBuilder
+    },
+    winit_input_helper::WinitInputHelper
+};
 
 mod gui;
 mod systems;
 mod errors;
 mod mem;
+use crate::{
+    gui::Framework,
+    systems::{Chip8, System},
+};
 
-const WIDTH: u32 = 640;
-const HEIGHT: u32 = 480;
-const BOX_SIZE: i16 = 64;
-
-/// Representation of the application state. In this example, a box will bounce around the screen.
-#[derive(Debug)]
-struct World {
-    box_x: i16,
-    box_y: i16,
-    velocity_x: i16,
-    velocity_y: i16,
-}
+const SCALE: u32 = 1;
+const WIDTH: u32 = CHIP8_DISP_WIDTH as u32 * SCALE;
+const HEIGHT: u32 = CHIP8_DISP_HEIGHT as u32 * SCALE;
 
 fn open_bytes(path: &String) -> Result<Vec<u8>, Box<dyn Error>> {
     Ok(std::fs::read(path)?)
@@ -46,8 +47,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = std::env::args().collect();
     let path = args.get(1).expect("Usage : emu [CHIP-8 program]");
     // might use clap later instead to discern between systems and have some debug options
-
-    let program_data = open_bytes(path)?;
 
     let event_loop = EventLoop::new().unwrap();
     let mut input = WinitInputHelper::new();
@@ -79,22 +78,20 @@ fn main() -> Result<(), Box<dyn Error>> {
         (pixels, framework)
     };
 
-    let world = Arc::new(RwLock::new(World::new())); // TODO: create cpu thread
-    let world_shared = world.clone();
-    fn world_loop(world: &mut World, pixels: Arc<RwLock<Pixels>>) {
-        loop {
-            world.update();
-        }
-    }
+    let program_data = open_bytes(path)?;
+    let chip8 = Arc::new(RwLock::new(Chip8::init()));
+    let _ = chip8.write().unwrap().load_program(&program_data);
+    let chip8_share = chip8.clone();
+
+    // TODO: verify if it's really useful or not at the end
     let pixels_shared = Arc::new(RwLock::new(pixels));
     let pixels_thread = pixels_shared.clone();
-    let world_thread = std::thread::spawn(move || {
+
+    let _chip8_thread = std::thread::spawn(move || {
         loop {
-            {world_shared.write().unwrap().update()};
-            drop(world_shared.read().inspect(|w| {
-                //println!("{:?}", w);
-            }));
-            //std::thread::sleep(Duration::from_millis(1));
+            // TODO: error handling
+            chip8_share.write().unwrap().exec_instruction().unwrap();
+            std::thread::sleep(Duration::from_micros(2000));
         }
     });
 
@@ -134,7 +131,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 ..
             } => {
                 // Draw the world
-                world.read().unwrap().draw(pixels_shared.write().unwrap().frame_mut());
+                chip8.read().unwrap().set_pixels_frame(pixels_shared.write().unwrap().frame_mut());
 
                 // Prepare egui
                 framework.prepare(&window_shared);
@@ -172,60 +169,5 @@ fn log_error<E: std::error::Error + 'static>(method_name: &str, err: E) { // TOD
     error!("{method_name}() failed: {err}");
     for source in err.sources().skip(1) {
         error!("  Caused by: {source}");
-    }
-}
-
-impl World {
-    // Create a new `World` instance that can draw a moving box.
-    fn new() -> Self {
-        Self {
-            box_x: 24,
-            box_y: 16,
-            velocity_x: 1,
-            velocity_y: 1,
-        }
-    }
-
-    // Update the `World` internal state; bounce the box around the screen.
-    fn update(&mut self) {
-        if self.box_x <= 0 || self.box_x + BOX_SIZE > WIDTH as i16 {
-            self.velocity_x *= -1;
-        }
-        if self.box_y <= 0 || self.box_y + BOX_SIZE > HEIGHT as i16 {
-            self.velocity_y *= -1;
-        }
-
-        self.box_x += self.velocity_x;
-        self.box_y += self.velocity_y;
-    }
-
-    // Draw the `World` state to the frame buffer.
-    //
-    // Assumes the default texture format: `wgpu::TextureFormat::Rgba8UnormSrgb`
-    fn draw(&self, frame: &mut [u8]) {
-        let mut hasher = std::hash::DefaultHasher::new();
-        std::hash::Hash::hash_slice(frame, &mut hasher);
-        //println!("cur frame hash : {:x}", hasher.finish());
-        //println!("(self is {self:?})");
-        for (i, pixel) in frame.chunks_exact_mut(4).enumerate() {
-            let x = (i % WIDTH as usize) as i16;
-            let y = (i / WIDTH as usize) as i16;
-
-            let inside_the_box = x >= self.box_x
-                && x < self.box_x + BOX_SIZE
-                && y >= self.box_y
-                && y < self.box_y + BOX_SIZE;
-
-            let rgba = if inside_the_box {
-                [0x5e, 0x48, 0xe8, 0xff]
-            } else {
-                [0x48, 0xb2, 0xe8, 0xff]
-            };
-
-            pixel.copy_from_slice(&rgba);
-        }
-        let mut hasher = std::hash::DefaultHasher::new();
-        std::hash::Hash::hash_slice(frame, &mut hasher);
-        //println!("next frame hash : {:x}", hasher.finish());
     }
 }

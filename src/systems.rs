@@ -1,15 +1,16 @@
 use std::error::Error;
 use std::time::{Instant, Duration};
-use rand::{Rng, rngs::ThreadRng};
+use rand::SeedableRng;
+use rand::{Rng, rngs::StdRng};
 
 //use crate::gui::{chip8_get_key, chip8_get_any_key};
 use crate::mem::{Chip8Mem, Memory16Bit};
-use crate::errors::{InvalidInstructionError, ProgramLoadingError, UnvavailableIOError, InvalidAccessError};
+use crate::errors::{InvalidInstructionError, ProgramLoadingError, InvalidAccessError};
 
 pub trait System {
     fn init() -> Self;
     fn load_program(&mut self, program_data: &[u8]) -> Result<(), Box<dyn Error>>;
-    fn exec_instruction(&mut self, window: Option<()>) -> Result<(), Box<dyn Error>>;
+    fn exec_instruction(&mut self) -> Result<(), Box<dyn Error>>;
 }
 
 pub struct Chip8 {
@@ -20,7 +21,7 @@ pub struct Chip8 {
     delay: u8,
     sound: u8,
     ram: Chip8Mem,
-    rng: ThreadRng,
+    rng: StdRng,
     last_frame: Instant,
 }
 
@@ -52,6 +53,9 @@ const CHIP8_FONT: [u8; 80] = [
     0xF0, 0x80, 0xF0, 0x80, 0x80  // F 
 ];
 const CHIP8_INSTR_P_S: u16 = 700;
+const MINIFB_COLOR_BG: [u8; 4] = [0x22, 0x11, 0x10, 0xFF];
+const MINIFB_COLOR_FG: [u8; 4] = [0xFF, 0x99, 0x00, 0xFF];
+
 
 impl Chip8 {
     pub fn get_state(&self) -> (u16, u16, u16, &Vec<u8>, u8, u8, &Chip8Mem) {
@@ -59,6 +63,25 @@ impl Chip8 {
     }
     pub fn get_mem(&mut self) -> &mut Chip8Mem {
         &mut self.ram
+    }
+    pub fn set_pixels_frame(&self, frame: &mut [u8]) {
+         self.ram
+             .get(CHIP8_DISP_BUF_ADDR, CHIP8_DISP_BUF_LEN)
+             .unwrap()
+             .into_iter()
+             .enumerate()
+             .for_each(|(i, c)| {
+                 frame[i*32..(i+1)*32].copy_from_slice([
+                     if c & 0b10000000 == 0b10000000 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
+                     if c & 0b01000000 == 0b01000000 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
+                     if c & 0b00100000 == 0b00100000 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
+                     if c & 0b00010000 == 0b00010000 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
+                     if c & 0b00001000 == 0b00001000 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
+                     if c & 0b00000100 == 0b00000100 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
+                     if c & 0b00000010 == 0b00000010 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
+                     if c & 0b00000001 == 0b00000001 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
+                 ].concat().as_slice());}
+             );
     }
 }
 
@@ -72,7 +95,7 @@ impl System for Chip8 {
             delay: 0,
             sound: 0,
             ram: Chip8Mem::new(),
-            rng: rand::thread_rng(),
+            rng: StdRng::from_os_rng(),
             last_frame: Instant::now(),
         }
     }
@@ -80,7 +103,7 @@ impl System for Chip8 {
     fn load_program(&mut self, program_data: &[u8]) -> Result<(), Box<dyn Error>> {
         if program_data.len() > CHIP8_MAX_PROG_SIZE as usize {
             return Err(Box::new(ProgramLoadingError::new(format!(
-                        "Program too long, {} > 3,328 KB", program_data.len())
+                        "Program too long, {}B > 3,328 KB", program_data.len())
                         )))
         }
         self.ram.set(CHIP8_FONT_START, &CHIP8_FONT).unwrap();
@@ -90,7 +113,7 @@ impl System for Chip8 {
         Ok(())
     }
 
-    fn exec_instruction(&mut self, window: Option<()>) -> Result<(), Box<(dyn std::error::Error + 'static)>> { // TODO: handle async here too
+    fn exec_instruction(&mut self) -> Result<(), Box<(dyn std::error::Error + 'static)>> { // TODO: handle async here too
         if self.last_frame.elapsed() >= Duration::from_nanos(16666666) {
             self.sound = self.sound.saturating_sub(1);
             self.delay = self.delay.saturating_sub(1);
@@ -241,7 +264,7 @@ impl System for Chip8 {
             },
 
             // C - RAND (VX = rand() & BL)
-            (0xC, x, b, l) => self.v[x as usize] = self.rng.gen_range(0..=255) & ((b << 4) + l),
+            (0xC, x, b, l) => self.v[x as usize] = self.rng.random_range(0..=255) & ((b << 4) + l),
 
             // D - DISP (draws sprite @ coord VX,VY, N pixels high)
             (0xD, x, y, n) => {
@@ -264,24 +287,17 @@ impl System for Chip8 {
 
             // E - INPT checking
             (0xE, b, m, l) => {
-                match window {
-                    Some(window) => {
-                        match (b, m, l) {
-                            //(x, 0x9, 0xE) => if chip8_get_key(window, self.v[x as usize]) {
-                            //    self.pc += 2;
-                            //},
-                            //(x, 0xA, 0x1) => if !chip8_get_key(window, self.v[x as usize]) {
-                            //    self.pc += 2;
-                            //},
-                            err => return Err(Box::new(InvalidInstructionError::new(
-                                              format!("wrong operand 0x{:03X} for opcode 0xE (should be 0xE[X]9E or 0xE[X]A1)",
-                                                      u16::from_be_bytes([err.0, (err.1 << 4) + err.2]))
-                                              ))),
-                        }
-                    }
-                    None => return Err(Box::new(UnvavailableIOError::new(
-                                "Can't fetch inputs while running headless"
-                                ))),
+                match (b, m, l) {
+                    //(x, 0x9, 0xE) => if chip8_get_key(window, self.v[x as usize]) {
+                    //    self.pc += 2;
+                    //},
+                    //(x, 0xA, 0x1) => if !chip8_get_key(window, self.v[x as usize]) {
+                    //    self.pc += 2;
+                    //},
+                    err => return Err(Box::new(InvalidInstructionError::new(
+                                      format!("wrong operand 0x{:03X} for opcode 0xE (should be 0xE[X]9E or 0xE[X]A1)",
+                                              u16::from_be_bytes([err.0, (err.1 << 4) + err.2]))
+                                      ))),
                 }
             },
 
@@ -290,17 +306,10 @@ impl System for Chip8 {
                 match (x, (op_b << 4) + op_l) {
                     (x, 0x07) => self.v[x as usize] = self.delay, // MOVD
                     (x, 0x0A) => { // WAITKEY
-                        match window { // FIXME: replace with if let, this is ugly
-                            Some(window) => {
-                                //match chip8_get_any_key(window) {
-                                //    Some(key) => self.v[x as usize] = key,
-                                //    None => self.pc -= 2,
-                                //}
-                            }
-                            None => return Err(Box::new(UnvavailableIOError::new(
-                                        "Can't fetch inputs while running headless"
-                                        ))),
-                        }
+                        //match chip8_get_any_key(window) {
+                        //    Some(key) => self.v[x as usize] = key,
+                        //    None => self.pc -= 2,
+                        //}
                     },
                     (x, 0x15) => self.delay = self.v[x as usize], // RMOVD
                     (x, 0x18) => self.sound = self.v[x as usize], // RMOVS
