@@ -1,7 +1,10 @@
 use std::error::Error;
+use std::sync::{Arc, RwLock};
 use std::time::{Instant, Duration};
 use rand::SeedableRng;
 use rand::{Rng, rngs::StdRng};
+use winit::keyboard::KeyCode;
+use winit_input_helper::WinitInputHelper;
 
 //use crate::gui::{chip8_get_key, chip8_get_any_key};
 use crate::mem::{Chip8Mem, Memory16Bit};
@@ -10,7 +13,7 @@ use crate::errors::{InvalidInstructionError, ProgramLoadingError, InvalidAccessE
 pub trait System {
     fn init() -> Self;
     fn load_program(&mut self, program_data: &[u8]) -> Result<(), Box<dyn Error>>;
-    fn exec_instruction(&mut self) -> Result<(), Box<dyn Error>>;
+    fn exec_instruction(&mut self, input: Option<&Arc<RwLock<WinitInputHelper>>>) -> Result<(), Box<dyn Error>>;
 }
 
 pub struct Chip8 {
@@ -83,6 +86,51 @@ impl Chip8 {
                  ].concat().as_slice());}
              );
     }
+    fn is_key_pressed(input: Arc<RwLock<WinitInputHelper>>, key_byte: u8) -> bool {
+        let key = match key_byte {
+            0x0 => KeyCode::Numpad0,
+            0x1 => KeyCode::Numpad1,
+            0x2 => KeyCode::Numpad2,
+            0x3 => KeyCode::Numpad3,
+            0x4 => KeyCode::Numpad4,
+            0x5 => KeyCode::Numpad5,
+            0x6 => KeyCode::Numpad6,
+            0x7 => KeyCode::Numpad7,
+            0x8 => KeyCode::Numpad8,
+            0x9 => KeyCode::Numpad9,
+            0xA => KeyCode::NumpadComma,
+            0xB => KeyCode::NumpadEnter,
+            0xC => KeyCode::NumpadAdd,
+            0xD => KeyCode::NumpadSubtract,
+            0xE => KeyCode::NumpadMultiply,
+            0xF => KeyCode::NumpadDivide,
+            _ => return false,
+        };
+        return input.read().unwrap().key_held(key);
+    }
+    fn get_next_keypress(input: Arc<RwLock<WinitInputHelper>>) -> Option<u8> {
+        let key;
+        todo!();
+        let key_byte = match key {
+            0x0 => KeyCode::Numpad0,
+            0x1 => KeyCode::Numpad1,
+            0x2 => KeyCode::Numpad2,
+            0x3 => KeyCode::Numpad3,
+            0x4 => KeyCode::Numpad4,
+            0x5 => KeyCode::Numpad5,
+            0x6 => KeyCode::Numpad6,
+            0x7 => KeyCode::Numpad7,
+            0x8 => KeyCode::Numpad8,
+            0x9 => KeyCode::Numpad9,
+            0xA => KeyCode::NumpadComma,
+            0xB => KeyCode::NumpadEnter,
+            0xC => KeyCode::NumpadAdd,
+            0xD => KeyCode::NumpadSubtract,
+            0xE => KeyCode::NumpadMultiply,
+            0xF => KeyCode::NumpadDivide,
+            _ => return None,
+        };
+    }
 }
 
 impl System for Chip8 {
@@ -113,7 +161,11 @@ impl System for Chip8 {
         Ok(())
     }
 
-    fn exec_instruction(&mut self) -> Result<(), Box<(dyn std::error::Error + 'static)>> { // TODO: handle async here too
+    fn exec_instruction(
+        &mut self,
+        input: Option<&Arc<RwLock<WinitInputHelper>>>
+    ) -> Result<(), Box<(dyn std::error::Error + 'static)>> {
+        // TODO: better timing ? waiting for vblank on draw (check details) ?
         if self.last_frame.elapsed() >= Duration::from_nanos(16666666) {
             self.sound = self.sound.saturating_sub(1);
             self.delay = self.delay.saturating_sub(1);

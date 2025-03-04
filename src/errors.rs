@@ -7,8 +7,13 @@ pub struct InvalidAccessError {
 }
 
 impl InvalidAccessError {
-    pub fn new<T>(reason: T) -> Self where T: ToString {
-        Self { reason: reason.to_string() }
+    pub fn new<T>(reason: T) -> Self
+    where
+        T: ToString,
+    {
+        Self {
+            reason: reason.to_string(),
+        }
     }
 }
 impl fmt::Display for InvalidAccessError {
@@ -18,15 +23,19 @@ impl fmt::Display for InvalidAccessError {
 }
 impl Error for InvalidAccessError {}
 
-
 #[derive(Debug)]
 pub struct InvalidInstructionError {
     reason: String,
 }
 
 impl InvalidInstructionError {
-    pub fn new<T>(reason: T) -> Self where T: ToString {
-        Self { reason: reason.to_string() }
+    pub fn new<T>(reason: T) -> Self
+    where
+        T: ToString,
+    {
+        Self {
+            reason: reason.to_string(),
+        }
     }
 }
 impl fmt::Display for InvalidInstructionError {
@@ -36,15 +45,19 @@ impl fmt::Display for InvalidInstructionError {
 }
 impl Error for InvalidInstructionError {}
 
-
 #[derive(Debug)]
 pub struct ProgramLoadingError {
     reason: String,
 }
 
 impl ProgramLoadingError {
-    pub fn new<T>(reason: T) -> Self where T: ToString {
-        Self { reason: reason.to_string() }
+    pub fn new<T>(reason: T) -> Self
+    where
+        T: ToString,
+    {
+        Self {
+            reason: reason.to_string(),
+        }
     }
 }
 impl fmt::Display for ProgramLoadingError {
@@ -54,15 +67,19 @@ impl fmt::Display for ProgramLoadingError {
 }
 impl Error for ProgramLoadingError {}
 
-
 #[derive(Debug)]
 pub struct UnvavailableIOError {
     reason: String,
 }
 
 impl UnvavailableIOError {
-    pub fn new<T>(reason: T) -> Self where T: ToString {
-        Self { reason: reason.to_string() }
+    pub fn new<T>(reason: T) -> Self
+    where
+        T: ToString,
+    {
+        Self {
+            reason: reason.to_string(),
+        }
     }
 }
 impl fmt::Display for UnvavailableIOError {

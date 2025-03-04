@@ -65,7 +65,6 @@ impl Framework {
 
     // Handle input events from the window manager.
     pub(crate) fn handle_event(&mut self, window: &Window, event: &winit::event::WindowEvent) {
-        // TODO: pass that to cpu thread ?
         let _ = self.egui_state.on_window_event(window, event);
     }
 
