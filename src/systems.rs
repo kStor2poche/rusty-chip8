@@ -1,16 +1,15 @@
 use std::error::Error;
 use std::time::{Instant, Duration};
-use minifb::Window;
 use rand::{Rng, rngs::ThreadRng};
 
-use crate::io::{chip8_get_key, chip8_get_any_key};
+//use crate::gui::{chip8_get_key, chip8_get_any_key};
 use crate::mem::{Chip8Mem, Memory16Bit};
 use crate::errors::{InvalidInstructionError, ProgramLoadingError, UnvavailableIOError, InvalidAccessError};
 
 pub trait System {
     fn init() -> Self;
     fn load_program(&mut self, program_data: &[u8]) -> Result<(), Box<dyn Error>>;
-    fn exec_instruction(&mut self, window: Option<&Window>) -> Result<(), Box<dyn Error>>;
+    fn exec_instruction(&mut self, window: Option<()>) -> Result<(), Box<dyn Error>>;
 }
 
 pub struct Chip8 {
@@ -91,7 +90,7 @@ impl System for Chip8 {
         Ok(())
     }
 
-    fn exec_instruction(&mut self, window: Option<&Window>) -> Result<(), Box<(dyn std::error::Error + 'static)>> { // TODO: handle async here too
+    fn exec_instruction(&mut self, window: Option<()>) -> Result<(), Box<(dyn std::error::Error + 'static)>> { // TODO: handle async here too
         if self.last_frame.elapsed() >= Duration::from_nanos(16666666) {
             self.sound = self.sound.saturating_sub(1);
             self.delay = self.delay.saturating_sub(1);
@@ -268,12 +267,12 @@ impl System for Chip8 {
                 match window {
                     Some(window) => {
                         match (b, m, l) {
-                            (x, 0x9, 0xE) => if chip8_get_key(window, self.v[x as usize]) {
-                                self.pc += 2;
-                            },
-                            (x, 0xA, 0x1) => if !chip8_get_key(window, self.v[x as usize]) {
-                                self.pc += 2;
-                            },
+                            //(x, 0x9, 0xE) => if chip8_get_key(window, self.v[x as usize]) {
+                            //    self.pc += 2;
+                            //},
+                            //(x, 0xA, 0x1) => if !chip8_get_key(window, self.v[x as usize]) {
+                            //    self.pc += 2;
+                            //},
                             err => return Err(Box::new(InvalidInstructionError::new(
                                               format!("wrong operand 0x{:03X} for opcode 0xE (should be 0xE[X]9E or 0xE[X]A1)",
                                                       u16::from_be_bytes([err.0, (err.1 << 4) + err.2]))
@@ -293,10 +292,10 @@ impl System for Chip8 {
                     (x, 0x0A) => { // WAITKEY
                         match window { // FIXME: replace with if let, this is ugly
                             Some(window) => {
-                                match chip8_get_any_key(window) {
-                                    Some(key) => self.v[x as usize] = key,
-                                    None => self.pc -= 2,
-                                }
+                                //match chip8_get_any_key(window) {
+                                //    Some(key) => self.v[x as usize] = key,
+                                //    None => self.pc -= 2,
+                                //}
                             }
                             None => return Err(Box::new(UnvavailableIOError::new(
                                         "Can't fetch inputs while running headless"
