@@ -11,6 +11,7 @@ pub trait Memory16Bit {
     fn dump(&self) -> &Vec<u8>;
 }
 
+#[derive(Clone)]
 pub struct Chip8Mem {
     ram: Vec<u8>,
 }

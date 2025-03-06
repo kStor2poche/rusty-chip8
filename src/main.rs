@@ -30,6 +30,7 @@ mod gui;
 mod mem;
 mod systems;
 mod debug;
+mod disas;
 use crate::{
     gui::Framework,
     systems::{Chip8, System},

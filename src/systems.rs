@@ -36,9 +36,9 @@ pub const CHIP8_DISP_BUF_ADDR: u16 = 0xF00;
 pub const CHIP8_DISP_BUF_LEN: u16 = 0x100;
 pub const CHIP8_DISP_WIDTH: u16 = 64;
 pub const CHIP8_DISP_HEIGHT: u16 = 32;
-const CHIP8_STACK_BASE_ADDR: u16 = 0xEA0;
-const CHIP8_FONT_START: u16 = 0x50;
-const CHIP8_FONT_HEIGHT: u8 = 0x5;
+pub const CHIP8_STACK_BASE_ADDR: u16 = 0xEA0;
+pub const CHIP8_FONT_START: u16 = 0x50;
+pub const CHIP8_FONT_HEIGHT: u8 = 0x5;
 const CHIP8_FONT: [u8; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
     0x20, 0x60, 0x20, 0x20, 0x70, // 1
@@ -61,10 +61,32 @@ const CHIP8_INSTR_P_S: u16 = 700;
 const MINIFB_COLOR_BG: [u8; 4] = [0x22, 0x11, 0x10, 0xFF];
 const MINIFB_COLOR_FG: [u8; 4] = [0xFF, 0x99, 0x00, 0xFF];
 
+pub struct Chip8State {
+    pub i: u16,
+    pub sp: u16,
+    pub pc: u16,
+    pub v: Vec<u8>,
+    pub delay: u8,
+    pub sound: u8,
+    pub ram: Chip8Mem,
+}
+impl From<&Chip8> for Chip8State {
+    fn from(chip8: &Chip8) -> Self {
+        Self {
+            i: chip8.i,
+            sp: chip8.sp,
+            pc: chip8.pc,
+            v: chip8.v.clone(),
+            delay: chip8.delay,
+            sound: chip8.sound,
+            ram: chip8.ram.clone()
+        }
+    }
+}
 
 impl Chip8 {
-    pub fn get_state(&self) -> (u16, u16, u16, &Vec<u8>, u8, u8, &Chip8Mem) {
-        (self.i, self.sp, self.pc, &self.v, self.delay, self.sound, &(self.ram))
+    pub fn get_state(&self) -> Chip8State {
+        self.into()
     }
 
     pub fn get_mem(&self) -> &Chip8Mem {
@@ -140,7 +162,6 @@ impl Chip8 {
         ];
         let key;
         'main: loop {
-            println!("looping...");
             for cur_key in keycodes {
                 if input.read().unwrap().key_pressed(cur_key) {
                     key = cur_key;
@@ -186,7 +207,7 @@ impl System for Chip8 {
             ram: Chip8Mem::new(),
             rng: StdRng::from_os_rng(),
             last_frame: Instant::now(),
-            pc_backtrace: Backtrace::new(10),
+            pc_backtrace: Backtrace::new(100),
         }
     }
 
@@ -466,7 +487,7 @@ impl System for Chip8 {
                                 u16::from_be_bytes([(err.0 << 4) + err.1, (err.2 << 4) + err.3]))
                         ))),
         };
-        self.pc_backtrace.refresh(self.pc);
+        self.pc_backtrace.refresh(self.pc, self.get_state(), opcode);
         self.pc = (self.pc + 2) & 0b0000111111111111;
         Ok(())
     }

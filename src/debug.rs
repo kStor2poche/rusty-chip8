@@ -1,40 +1,43 @@
 use core::fmt;
 use std::fmt::{Display, LowerHex};
 
-use crate::systems::Chip8;
+use crate::disas::disas_instruction;
+use crate::systems::{Chip8, Chip8State};
 use crate::mem::{Memory16Bit, Chip8Mem};
 
 pub struct Backtrace<T> {
-    trace: Box<[T]>,
+    trace: Box<[(T, String)]>,
     cur: usize,
 }
 
 impl<T: LowerHex + Default + Clone> Backtrace<T> {
     pub fn new(size: usize) -> Self {
-        Self { trace: vec![T::default(); size].into_boxed_slice(), cur: 0}
+        Self { trace: vec![(T::default(), String::new()); size].into_boxed_slice(), cur: 0}
     }
-    pub fn refresh(&mut self, new_val: T) {
+    pub fn refresh(&mut self, new_val: T, state: Chip8State, cur_op: (u8, u8, u8, u8)) {
         self.cur = (self.cur + 1) % self.trace.len();
-        self.trace[self.cur] = new_val;
+        self.trace[self.cur] = (new_val, disas_instruction(cur_op, Some(state)));
     }
 }
 
 impl<T: LowerHex + Default + Clone> Display for Backtrace<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "PC Backtrace: ")?;
+        write!(f, "\x1b[1mBacktrace:\x1b[0m\n")?;
 
         let l = self.trace.len();
         for i in 1..l {
-            write!(f, "{:x}, ", self.trace[(self.cur + i) % l])?;
+            let (addr, instr) = &self.trace[(self.cur + i) % l];
+            write!(f, "{:x}: {}\n", addr, instr)?;
         }
-        write!(f, "{:x}", self.trace[self.cur])
+        let (addr, instr) = &self.trace[self.cur];
+        write!(f, "{:x}: {}", addr, instr)
     }
 }
 
-impl Display for Chip8 {
+impl Display for Chip8 { // TODO: rather do that for a state, this is just _weird_
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = self.get_state();
-        let next_instr = s.6.get(s.2, 0x2).unwrap();
+        let next_instr = s.ram.get(s.pc, 0x2).unwrap();
         write!(f, "\x1b[1mCurrent state : \x1b[0m\n\
                    I : 0x{:03x}  \
                    SP : 0x{:03x}  \
@@ -57,10 +60,10 @@ impl Display for Chip8 {
                    VF : 0x{:02x}\n\
                    delay : 0x{:02x}  \
                    sound : 0x{:02x}\n",
-                   s.0, s.1, s.2,
-                   s.3[0], s.3[1], s.3[2],   s.3[3],   s.3[4],   s.3[5],   s.3[6],   s.3[7],
-                   s.3[8], s.3[9], s.3[0xA], s.3[0xB], s.3[0xC], s.3[0xD], s.3[0xE], s.3[0xF],
-                   s.4, s.5, u16::from_be_bytes([next_instr[0], next_instr[1]]))
+                   s.i, s.sp, s.pc,
+                   s.v[0], s.v[1], s.v[2],   s.v[3],   s.v[4],   s.v[5],   s.v[6],   s.v[7],
+                   s.v[8], s.v[9], s.v[0xA], s.v[0xB], s.v[0xC], s.v[0xD], s.v[0xE], s.v[0xF],
+                   s.delay, s.sound, u16::from_be_bytes([next_instr[0], next_instr[1]]))
     }
 }
 impl Display for Chip8Mem {
