@@ -21,6 +21,7 @@ pub(crate) struct Framework {
 // App state
 struct Gui {
     about_win_open: bool,
+    // TODO: implement gui features and "clean" code
     debug_win_open: bool,
     mem_win_open: bool,
 }

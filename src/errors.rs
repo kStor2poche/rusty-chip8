@@ -66,25 +66,3 @@ impl fmt::Display for ProgramLoadingError {
     }
 }
 impl Error for ProgramLoadingError {}
-
-#[derive(Debug)]
-pub struct UnvavailableIOError {
-    reason: String,
-}
-
-impl UnvavailableIOError {
-    pub fn new<T>(reason: T) -> Self
-    where
-        T: ToString,
-    {
-        Self {
-            reason: reason.to_string(),
-        }
-    }
-}
-impl fmt::Display for UnvavailableIOError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "UnvavailableIOError : {}", self.reason)
-    }
-}
-impl Error for UnvavailableIOError {}

@@ -2,24 +2,23 @@ use crate::{
     errors::InvalidAccessError,
     systems::{CHIP8_DISP_BUF_ADDR, CHIP8_DISP_BUF_LEN, CHIP8_DISP_HEIGHT, CHIP8_DISP_WIDTH},
 };
-use std::error::Error;
+use anyhow::{Result, anyhow, Context};
 
 pub trait Memory16Bit {
-    fn get(&self, addr: u16, len: u16) -> Result<&[u8], Box<dyn Error>>;
-    fn set(&mut self, addr: u16, content: &[u8]) -> Result<(), Box<dyn Error>>;
-    fn set_byte(&mut self, addr: u16, content: u8) -> Result<(), Box<dyn Error>>;
-    fn dump(&self) -> &Vec<u8>;
+    fn get(&self, addr: u16, len: u16) -> Result<&[u8]>;
+    fn set(&mut self, addr: u16, content: &[u8]) -> Result<()>;
+    fn set_byte(&mut self, addr: u16, content: u8) -> Result<()>;
+    fn dump(&self) -> &[u8];
 }
 
 #[derive(Clone)]
 pub struct Chip8Mem {
-    ram: Vec<u8>,
+    ram: [u8; 4096],
 }
 
 impl Chip8Mem {
-    // FIXME: _please_ stop using vecs when not necessary at all
     pub fn new() -> Self {
-        Self { ram: vec![0; 4096] } // 4K ram
+        Self { ram: [0; 4096] } // 4K ram
     }
     pub fn load_sprite(
         &mut self,
@@ -27,17 +26,12 @@ impl Chip8Mem {
         x_uncapped: u8,
         y_uncapped: u8,
         n: u8,
-    ) -> Result<bool, Box<dyn Error>> {
-        // not too bad in the end :)
-        // unless ??
-        //
-        // TODO : do it without any cloning (even though minifb is clearly the bottleneck but shh)
-        //        or maybe lack of multithreading is (clearly more likely)
+    ) -> Result<bool> {
         let x = x_uncapped & (CHIP8_DISP_WIDTH as u8 - 1);
         let y = y_uncapped & (CHIP8_DISP_HEIGHT as u8 - 1);
         let mut fb = self
             .get(CHIP8_DISP_BUF_ADDR, CHIP8_DISP_BUF_LEN)
-            .unwrap()
+            .context("Chip8 display buffer badly defined")?
             .to_owned();
         let mut flag = false;
         fb.iter_mut()
@@ -71,20 +65,20 @@ impl Chip8Mem {
 }
 
 impl Memory16Bit for Chip8Mem {
-    fn get(&self, addr: u16, len: u16) -> Result<&[u8], Box<dyn Error>> {
+    fn get(&self, addr: u16, len: u16) -> Result<&[u8]> {
         let res = &self.ram.get(addr as usize..(addr as usize + len as usize));
         match res {
             Some(res_ok) => Ok(res_ok),
-            None => Err(Box::new(InvalidAccessError::new(format!(
+            None => Err(anyhow!(InvalidAccessError::new(format!(
                 "Address 0x{:X} unreachable",
                 addr
             )))),
         }
     }
 
-    fn set(&mut self, addr: u16, content: &[u8]) -> Result<(), Box<dyn Error>> {
+    fn set(&mut self, addr: u16, content: &[u8]) -> Result<()> {
         if addr as usize + content.len() - 1 > 0xFFF {
-            return Err(Box::new(InvalidAccessError::new(format!(
+            return Err(anyhow!(InvalidAccessError::new(format!(
                 "Cannot set 0x{:X} bytes starting from 0x{:03X}, too big for emulated memory !",
                 content.len(),
                 addr
@@ -98,9 +92,9 @@ impl Memory16Bit for Chip8Mem {
         Ok(())
     }
 
-    fn set_byte(&mut self, addr: u16, content: u8) -> Result<(), Box<dyn Error>> {
+    fn set_byte(&mut self, addr: u16, content: u8) -> Result<()> {
         if addr as usize > 0xFFF {
-            return Err(Box::new(InvalidAccessError::new(format!(
+            return Err(anyhow!(InvalidAccessError::new(format!(
                 "Cannot set a bytes starting from 0x{:03X}, too big for emulated memory !",
                 addr
             ))));
@@ -110,7 +104,7 @@ impl Memory16Bit for Chip8Mem {
         Ok(())
     }
 
-    fn dump(&self) -> &Vec<u8> {
+    fn dump(&self) -> &[u8] {
         &self.ram
     }
 }

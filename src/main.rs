@@ -1,19 +1,13 @@
-#![deny(clippy::all)]
-#![forbid(unsafe_code)]
+use winit::keyboard::Key;
 
-use std::process::exit;
-
-use systems::{CHIP8_DISP_HEIGHT, CHIP8_DISP_WIDTH};
-
-//use std::hash::Hasher;
 use {
-    error_iter::ErrorIter as _,
+    anyhow::Result,
     log::error,
     pixels::{Pixels, SurfaceTexture},
     std::{
-        error::Error,
         sync::{Arc, RwLock},
         time::Duration,
+        process::exit,
     },
     winit::{
         dpi::LogicalSize,
@@ -33,18 +27,18 @@ mod debug;
 mod disas;
 use crate::{
     gui::Framework,
-    systems::{Chip8, System},
+    systems::{Chip8, System, CHIP8_DISP_HEIGHT, CHIP8_DISP_WIDTH},
 };
 
 const SCALE: u32 = 16;
 const WIN_WIDTH: u32 = CHIP8_DISP_WIDTH as u32 * SCALE;
 const WIN_HEIGHT: u32 = CHIP8_DISP_HEIGHT as u32 * SCALE; // TODO: add egui toolbar height ?
 
-fn open_bytes(path: &String) -> Result<Vec<u8>, Box<dyn Error>> {
+fn open_bytes(path: &String) -> Result<Vec<u8>> {
     Ok(std::fs::read(path)?)
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<()> {
     env_logger::init();
 
     // rather use GUI techniques
@@ -55,9 +49,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("Usage : emu [CHIP-8 program]");
         exit(1);
     };
-    // might use clap later instead to discern between systems and have some debug options
 
-    let event_loop = EventLoop::new().unwrap();
+    let event_loop = EventLoop::new()?;
     let input = Arc::new(RwLock::new(WinitInputHelper::new()));
     let input_shared = input.clone();
     let window = {
@@ -66,8 +59,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .with_title("Rusty Chip8")
             .with_inner_size(size)
             .with_min_inner_size(size)
-            .build(&event_loop)
-            .unwrap()
+            .build(&event_loop)?
     };
 
     let (mut pixels, mut framework) = {
@@ -88,23 +80,21 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
 
     let program_data = open_bytes(path)?;
-    // TODO: clean error handling on rwlock thingies
     let chip8 = Arc::new(RwLock::new(Chip8::init()));
-    chip8.write().unwrap().load_program(&program_data)?;
+    chip8.write().expect("Lock poisoned").load_program(&program_data)?;
     let chip8_share = chip8.clone();
 
-    let _chip8_thread = std::thread::spawn(move || {
+    let chip8_thread = std::thread::spawn(move || {
         loop {
-            {
-                let mut chip8 = chip8_share.write().unwrap();
-                if let Err(e) = chip8.exec_instruction(input_shared.clone()) {
-                    println!("{e}");
-                    println!("{}", chip8);
-                    println!("{}", chip8.get_mem());
-                    println!("{}", chip8.get_backtrace());
-                    return;
-                }
+            let mut chip8 = chip8_share.write().expect("Lock poisoned");
+            if let Err(e) = chip8.exec_instruction(input_shared.clone()) {
+                println!("{e}");
+                println!("{}", chip8.get_state());
+                println!("{}", chip8.get_mem());
+                println!("{}", chip8.get_backtrace());
+                return;
             }
+            drop(chip8);
             std::thread::sleep(Duration::from_micros(200));
         }
     });
@@ -112,24 +102,26 @@ fn main() -> Result<(), Box<dyn Error>> {
     let res =
         event_loop.run(|event, elwt| {
             // Handle input events
-            if input.write().unwrap().update(&event) {
+            if input.write().expect("Lock poisoned").update(&event) {
                 // Close events
-                if input.read().unwrap().key_pressed(KeyCode::Escape)
-                    || input.read().unwrap().close_requested()
+                if input.read().expect("Lock poisoned").key_pressed(KeyCode::Escape)
+                    || input.read().expect("Lock poisoned").key_pressed_logical(Key::Character("q"))
+                    || input.read().expect("Lock poisoned").close_requested()
                 {
                     elwt.exit();
                     return;
                 }
 
                 // Update the scale factor
-                if let Some(scale_factor) = input.read().unwrap().scale_factor() {
+                // TODO: see how to not crash from scaling with egui ^^
+                if let Some(scale_factor) = input.read().expect("Lock poisoned").scale_factor() {
                     framework.scale_factor(scale_factor);
                 }
 
                 // Resize the window
-                if let Some(size) = input.read().unwrap().window_resized() {
+                if let Some(size) = input.read().expect("Lock poisoned").window_resized() {
                     if let Err(err) = pixels.resize_surface(size.width, size.height) {
-                        log_error("pixels.resize_surface", err);
+                        error!("On surface resize, {}", err);
                         elwt.exit();
                         return;
                     }
@@ -138,7 +130,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                 // Update internal state and request a redraw
                 // TODO: message cpu thread that this is a vblank ?
-                // TODO: probe thread to see if it's alive or juste dead
+                if chip8_thread.is_finished() {
+                    // TODO: gui things
+                }
                 window.request_redraw();
             }
 
@@ -148,7 +142,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     // Draw the world
                     chip8
                         .read()
-                        .unwrap()
+                        .expect("Lock poisoned")
                         .set_pixels_frame(pixels.frame_mut());
 
                     // Prepare egui
@@ -169,7 +163,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                     // Basic error handling
                     if let Err(err) = render_result {
-                        log_error("pixels.render", err);
+                        error!("on render_result: {}", err);
                         elwt.exit();
                     }
                 }
@@ -181,14 +175,4 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         });
     Ok(res?)
-}
-
-fn log_error<E: std::error::Error + 'static>(method_name: &str, err: E) {
-    // TODO: verify
-    // usefulness of
-    // error_iter crate
-    error!("{method_name}() failed: {err}");
-    for source in err.sources().skip(1) {
-        error!("  Caused by: {source}");
-    }
 }

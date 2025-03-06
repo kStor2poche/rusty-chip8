@@ -2,7 +2,7 @@ use core::fmt;
 use std::fmt::{Display, LowerHex};
 
 use crate::disas::disas_instruction;
-use crate::systems::{Chip8, Chip8State};
+use crate::systems::Chip8State;
 use crate::mem::{Memory16Bit, Chip8Mem};
 
 pub struct Backtrace<T> {
@@ -34,9 +34,9 @@ impl<T: LowerHex + Default + Clone> Display for Backtrace<T> {
     }
 }
 
-impl Display for Chip8 { // TODO: rather do that for a state, this is just _weird_
+impl Display for Chip8State {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = self.get_state();
+        let s = self;
         let next_instr = s.ram.get(s.pc, 0x2).unwrap();
         write!(f, "\x1b[1mCurrent state : \x1b[0m\n\
                    I : 0x{:03x}  \
@@ -66,6 +66,7 @@ impl Display for Chip8 { // TODO: rather do that for a state, this is just _weir
                    s.delay, s.sound, u16::from_be_bytes([next_instr[0], next_instr[1]]))
     }
 }
+
 impl Display for Chip8Mem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let _ = writeln!(f, "\x1b[1mRAM dump :\x1b[0m");

@@ -1,10 +1,10 @@
-use std::error::Error;
 use std::sync::{Arc, RwLock};
 use std::time::{Instant, Duration};
 use rand::SeedableRng;
 use rand::{Rng, rngs::StdRng};
 use winit::keyboard::KeyCode;
 use winit_input_helper::WinitInputHelper;
+use anyhow::{anyhow, Context, Result};
 
 use crate::debug::Backtrace;
 use crate::mem::{Chip8Mem, Memory16Bit};
@@ -12,15 +12,15 @@ use crate::errors::{InvalidInstructionError, ProgramLoadingError, InvalidAccessE
 
 pub trait System {
     fn init() -> Self;
-    fn load_program(&mut self, program_data: &[u8]) -> Result<(), Box<dyn Error>>;
-    fn exec_instruction(&mut self, input: Arc<RwLock<WinitInputHelper>>) -> Result<(), Box<dyn Error>>;
+    fn load_program(&mut self, program_data: &[u8]) -> Result<()>;
+    fn exec_instruction(&mut self, input: Arc<RwLock<WinitInputHelper>>) -> Result<()>;
 }
 
 pub struct Chip8 {
     i: u16,
     sp: u16,
     pc: u16,
-    v: Vec<u8>,
+    v: [u8; 0x10],
     delay: u8,
     sound: u8,
     ram: Chip8Mem,
@@ -56,15 +56,14 @@ const CHIP8_FONT: [u8; 80] = [
     0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
     0xF0, 0x80, 0xF0, 0x80, 0x80  // F 
 ];
-const CHIP8_INSTR_P_S: u16 = 700;
-const MINIFB_COLOR_BG: [u8; 4] = [0x22, 0x11, 0x10, 0xFF];
-const MINIFB_COLOR_FG: [u8; 4] = [0xFF, 0x99, 0x00, 0xFF];
+const DISP_COLOR_BG: [u8; 4] = [0x22, 0x11, 0x10, 0xFF];
+const DISP_COLOR_FG: [u8; 4] = [0xFF, 0x99, 0x00, 0xFF];
 
 pub struct Chip8State {
     pub i: u16,
     pub sp: u16,
     pub pc: u16,
-    pub v: Vec<u8>,
+    pub v: [u8; 0x10],
     pub delay: u8,
     pub sound: u8,
     pub ram: Chip8Mem,
@@ -99,19 +98,19 @@ impl Chip8 {
     pub fn set_pixels_frame(&self, frame: &mut [u8]) {
          self.ram
              .get(CHIP8_DISP_BUF_ADDR, CHIP8_DISP_BUF_LEN)
-             .unwrap()
+             .expect("Chip8 display buffer badly defined")
              .into_iter()
              .enumerate()
              .for_each(|(i, c)| {
                  frame[i*32..(i+1)*32].copy_from_slice([
-                     if c & 0b10000000 == 0b10000000 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
-                     if c & 0b01000000 == 0b01000000 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
-                     if c & 0b00100000 == 0b00100000 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
-                     if c & 0b00010000 == 0b00010000 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
-                     if c & 0b00001000 == 0b00001000 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
-                     if c & 0b00000100 == 0b00000100 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
-                     if c & 0b00000010 == 0b00000010 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
-                     if c & 0b00000001 == 0b00000001 {MINIFB_COLOR_FG} else {MINIFB_COLOR_BG},
+                     if c & 0b10000000 == 0b10000000 {DISP_COLOR_FG} else {DISP_COLOR_BG},
+                     if c & 0b01000000 == 0b01000000 {DISP_COLOR_FG} else {DISP_COLOR_BG},
+                     if c & 0b00100000 == 0b00100000 {DISP_COLOR_FG} else {DISP_COLOR_BG},
+                     if c & 0b00010000 == 0b00010000 {DISP_COLOR_FG} else {DISP_COLOR_BG},
+                     if c & 0b00001000 == 0b00001000 {DISP_COLOR_FG} else {DISP_COLOR_BG},
+                     if c & 0b00000100 == 0b00000100 {DISP_COLOR_FG} else {DISP_COLOR_BG},
+                     if c & 0b00000010 == 0b00000010 {DISP_COLOR_FG} else {DISP_COLOR_BG},
+                     if c & 0b00000001 == 0b00000001 {DISP_COLOR_FG} else {DISP_COLOR_BG},
                  ].concat().as_slice());}
              );
     }
@@ -136,7 +135,7 @@ impl Chip8 {
             0xF => KeyCode::NumpadDivide,
             _ => unreachable!(),
         };
-        return input.read().unwrap().key_held(key);
+        return input.read().expect("Lock poisoned").key_held(key);
     }
 
     fn probe_keypress(input: Arc<RwLock<WinitInputHelper>>) -> Option<u8> {
@@ -195,33 +194,31 @@ impl System for Chip8 {
             i: 0,
             sp: CHIP8_STACK_BASE_ADDR,
             pc: CHIP8_PC_START,
-            v: vec![0; 16],
+            v: [0; 0x10],
             delay: 0,
             sound: 0,
             ram: Chip8Mem::new(),
             rng: StdRng::from_os_rng(),
             last_frame: Instant::now(),
-            pc_backtrace: Backtrace::new(100),
+            pc_backtrace: Backtrace::new(20),
         }
     }
 
-    fn load_program(&mut self, program_data: &[u8]) -> Result<(), Box<dyn Error>> {
+    fn load_program(&mut self, program_data: &[u8]) -> Result<()> {
         if program_data.len() > CHIP8_MAX_PROG_SIZE as usize {
-            return Err(Box::new(ProgramLoadingError::new(format!(
-                        "Program too long, {}B > 3,328 KB", program_data.len())
-                        )))
+            return Err(anyhow!(ProgramLoadingError::new(format!(
+                            "Program too long, {}B > 3,328 KB",
+                            program_data.len()
+                            ))))
         }
-        self.ram.set(CHIP8_FONT_START, &CHIP8_FONT).unwrap();
-        self.ram.set(CHIP8_PC_START, program_data).unwrap(); // shouldn't return an Err, so we
-                                                             // unwrap and panic if something
-                                                             // real bad happens
-        Ok(())
+        self.ram.set(CHIP8_FONT_START, &CHIP8_FONT)?;
+        self.ram.set(CHIP8_PC_START, program_data)
     }
 
     fn exec_instruction(
         &mut self,
         input: Arc<RwLock<WinitInputHelper>>
-    ) -> Result<(), Box<(dyn std::error::Error + 'static)>> {
+    ) -> Result<()> {
         // TODO: better timing ? waiting for vblank on draw (check details) ?
         if self.last_frame.elapsed() >= Duration::from_nanos(16666666) {
             self.sound = self.sound.saturating_sub(1);
@@ -230,32 +227,32 @@ impl System for Chip8 {
         }
         let opcode = self.ram.get(self.pc, 2)
                              .map(|op| (op[0] >> 4, op[0] & 0x0F, op[1] >> 4, op[1] & 0x0F))
-                             .expect(&format!("Couldn't read opcode at 0x{:X}", self.pc).to_string());
+                             .expect(&format!("Couldn't read opcode at 0x{:X}", self.pc));
         match opcode {
             // 0 - return subroutine (RTS) and display clear (CLS)
             (0x0, b, m, l) => {
                 match (b, m, l) {
 
                     (0x0, 0xE, 0x0) => { // CLS
-                        self.ram.set(CHIP8_DISP_BUF_ADDR, &vec![0; CHIP8_DISP_BUF_LEN as usize]).unwrap();
+                        self.ram.set(CHIP8_DISP_BUF_ADDR, &[0; CHIP8_DISP_BUF_LEN as usize])?;
                     },
 
                     (0x0, 0xE, 0xE) => { // RTS
                         self.sp -= 2;
                         if self.sp < CHIP8_STACK_BASE_ADDR {
-                            return Err(Box::new(InvalidInstructionError::new(
-                                       format!("tried to return from main subroutine (SP decreased below {:X})",
-                                               CHIP8_STACK_BASE_ADDR)
-                                       )));
+                            return Err(anyhow!(format!(
+                                        "tried to return from main subroutine (SP decreased below {:X})",
+                                        CHIP8_STACK_BASE_ADDR
+                                        )));
                         }
-                        let addr_bytes = self.ram.get(self.sp, 2).unwrap();
+                        let addr_bytes = self.ram.get(self.sp, 2).context("while getting a return address")?;
                         self.pc = u16::from_be_bytes([addr_bytes[0], addr_bytes[1]]);
                     },
 
-                    err => return Err(Box::new(InvalidInstructionError::new(
-                                      format!("wrong operand 0x{:03X} for opcode 0x0 (should be 0x0E0 or 0x0EE)",
-                                              u16::from_be_bytes([err.0, (err.1 << 4) + err.2]))
-                                      ))),
+                    err => return Err(anyhow!(format!(
+                                "wrong operand 0x{:03X} for opcode 0x0 (should be 0x0E0 or 0x0EE)",
+                                u16::from_be_bytes([err.0, (err.1 << 4) + err.2])
+                                ))),
                 };
             },
 
@@ -268,7 +265,7 @@ impl System for Chip8 {
             // 2 - CALL
             (0x2, b, m, l) => {
                 if self.sp >= CHIP8_DISP_BUF_ADDR {
-                    return Err(Box::new(InvalidInstructionError::new("exceeded stack frame limit")));
+                    return Err(anyhow!(InvalidInstructionError::new("exceeded stack frame limit")));
                 }
                 let _ = self.ram.set(self.sp, &self.pc.to_be_bytes());
                 self.sp += 2;
@@ -349,10 +346,10 @@ impl System for Chip8 {
                         self.v[0xF] = carry;
                     },
 
-                    err => return Err(Box::new(InvalidInstructionError::new(
-                                      format!("wrong operation 0x{:X} for opcode 0x8 (should be 0x0 -> 0x7 or 0xE)",
-                                              err)
-                                      ))),
+                    err => return Err(anyhow!(InvalidInstructionError::new(format!(
+                                    "wrong operation 0x{:X} for opcode 0x8 (should be 0x0 -> 0x7 or 0xE)",
+                                    err
+                                    )))),
                 }
             },
 
@@ -377,13 +374,11 @@ impl System for Chip8 {
 
             // D - DISP (draws sprite @ coord VX,VY, N pixels high)
             (0xD, x, y, n) => {
-                if n > 0xf { // --> FIXME: litteraly impossible, this if shouldn't exist
-                    return Err(Box::new(InvalidInstructionError::new(format!("Trying to draw a sprite with height {}. Height should be between 1 and 15 both included.", n))));
+                if n > 0xf {
+                    unreachable!("Trying to draw a sprite with height {} > 0xf. This _should_ be impossible.", n);
                 }
-                let sprite = match self.ram.get(self.i, n as u16) {
-                    Ok(slice) => slice.to_vec(),
-                    Err(_err) => todo!(),
-                };
+                // TODO: maybe directly take and pass address rather than sprite to load_sprite
+                let sprite = self.ram.get(self.i, n as u16).context("while fetching a sprite")?.to_owned();
                 self.v[0xF] = match Chip8Mem::load_sprite(&mut self.ram,
                                                           &sprite,
                                                           self.v[x as usize],
@@ -403,10 +398,10 @@ impl System for Chip8 {
                     (x, 0xA, 0x1) => if !Self::is_key_pressed(input, self.v[x as usize]) {
                         self.pc += 2;
                     },
-                    err => return Err(Box::new(InvalidInstructionError::new(
-                                      format!("wrong operand 0x{:03X} for opcode 0xE (should be 0xE[X]9E or 0xE[X]A1)",
-                                              u16::from_be_bytes([err.0, (err.1 << 4) + err.2]))
-                                      ))),
+                    err => return Err(anyhow!(InvalidInstructionError::new(format!(
+                                    "wrong operand 0x{:03X} for opcode 0xE (should be 0xE[X]9E or 0xE[X]A1)",
+                                    u16::from_be_bytes([err.0, (err.1 << 4) + err.2])
+                                    )))),
                 }
             },
 
@@ -448,9 +443,11 @@ impl System for Chip8 {
                     },
                     (n, 0x55) => { // STORE
                         if self.i + (n as u16 & 0x0F) > 0xFFF {
-                            return Err(Box::new(InvalidAccessError::new(
-                                        format!("Cannot STORE {:X} bytes of data at 0x{:03X}",
-                                                n, self.i))));
+                            return Err(anyhow!(InvalidAccessError::new(format!(
+                                            "Cannot STORE {:X} bytes of data at 0x{:03X}",
+                                            n,
+                                            self.i)
+                                        )));
                         }
                         for i in 0..=n {
                             match self.ram.set_byte(self.i + i as u16, self.v[i as usize]) {
@@ -462,28 +459,29 @@ impl System for Chip8 {
                     },
                     (n, 0x65) => { // LOAD
                         if self.i + (n as u16 & 0x0F) > 0xFFF {
-                            return Err(Box::new(InvalidAccessError::new(
-                                        format!("Cannot LOAD {:X} bytes of data from 0x{:03X}",
-                                                n, self.i))));
+                            return Err(anyhow!(InvalidAccessError::new(format!(
+                                            "Cannot LOAD {:X} bytes of data from 0x{:03X}",
+                                            n,
+                                            self.i)
+                                        )));
                         }
-                        for i in 0..=n {
-                            match self.ram.get(self.i + i as u16, 1) {
-                                Ok(byte) => self.v[i as usize] = byte[0],
-                                Err(err) => return Err(err),
-                            }
+                        let regs = self.ram.get(self.i as u16, n as u16 + 1)?;
+                        for i in 0..=n as usize {
+                            self.v[i as usize] = regs[i]
                         }
                         self.i = (self.i + n as u16 + 1) & 0b0000111111111111;
                     }
-                    (x, b) => return Err(Box::new(InvalidInstructionError::new(
-                                format!("Wrong operand 0x{:03X} for opcode 0xF",
-                                        u16::from_be_bytes([x, b]))))),
+                    (x, b) => return Err(anyhow!(InvalidInstructionError::new(format!(
+                                    "Wrong operand 0x{:03X} for opcode 0xF",
+                                    u16::from_be_bytes([x, b])
+                                    )))),
                 }
             }
 
-            err => return Err(Box::new(InvalidInstructionError::new(
-                        format!("invalid opcode 0x{:X}",
-                                u16::from_be_bytes([(err.0 << 4) + err.1, (err.2 << 4) + err.3]))
-                        ))),
+            err => return Err(anyhow!(InvalidInstructionError::new(format!(
+                        "invalid opcode 0x{:X}",
+                        u16::from_be_bytes([(err.0 << 4) + err.1, (err.2 << 4) + err.3]))
+                    ))),
         };
         self.pc_backtrace.refresh(self.pc, self.get_state(), opcode);
         self.pc = (self.pc + 2) & 0b0000111111111111;
