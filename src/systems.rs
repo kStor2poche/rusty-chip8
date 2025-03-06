@@ -6,6 +6,7 @@ use rand::{Rng, rngs::StdRng};
 use winit::keyboard::KeyCode;
 use winit_input_helper::WinitInputHelper;
 
+use crate::debug::Backtrace;
 //use crate::gui::{chip8_get_key, chip8_get_any_key};
 use crate::mem::{Chip8Mem, Memory16Bit};
 use crate::errors::{InvalidInstructionError, ProgramLoadingError, InvalidAccessError};
@@ -13,7 +14,7 @@ use crate::errors::{InvalidInstructionError, ProgramLoadingError, InvalidAccessE
 pub trait System {
     fn init() -> Self;
     fn load_program(&mut self, program_data: &[u8]) -> Result<(), Box<dyn Error>>;
-    fn exec_instruction(&mut self, input: Option<&Arc<RwLock<WinitInputHelper>>>) -> Result<(), Box<dyn Error>>;
+    fn exec_instruction(&mut self, input: Arc<RwLock<WinitInputHelper>>) -> Result<(), Box<dyn Error>>;
 }
 
 pub struct Chip8 {
@@ -26,6 +27,7 @@ pub struct Chip8 {
     ram: Chip8Mem,
     rng: StdRng,
     last_frame: Instant,
+    pc_backtrace: Backtrace<u16>,
 }
 
 const CHIP8_PC_START: u16 = 0x200;
@@ -64,9 +66,15 @@ impl Chip8 {
     pub fn get_state(&self) -> (u16, u16, u16, &Vec<u8>, u8, u8, &Chip8Mem) {
         (self.i, self.sp, self.pc, &self.v, self.delay, self.sound, &(self.ram))
     }
-    pub fn get_mem(&mut self) -> &mut Chip8Mem {
-        &mut self.ram
+
+    pub fn get_mem(&self) -> &Chip8Mem {
+        &self.ram
     }
+
+    pub fn get_backtrace(&self) -> &Backtrace<u16> {
+        &self.pc_backtrace
+    }
+
     pub fn set_pixels_frame(&self, frame: &mut [u8]) {
          self.ram
              .get(CHIP8_DISP_BUF_ADDR, CHIP8_DISP_BUF_LEN)
@@ -86,6 +94,7 @@ impl Chip8 {
                  ].concat().as_slice());}
              );
     }
+
     fn is_key_pressed(input: Arc<RwLock<WinitInputHelper>>, key_byte: u8) -> bool {
         let key = match key_byte {
             0x0 => KeyCode::Numpad0,
@@ -104,32 +113,63 @@ impl Chip8 {
             0xD => KeyCode::NumpadSubtract,
             0xE => KeyCode::NumpadMultiply,
             0xF => KeyCode::NumpadDivide,
-            _ => return false,
+            _ => unreachable!(),
         };
         return input.read().unwrap().key_held(key);
     }
-    fn get_next_keypress(input: Arc<RwLock<WinitInputHelper>>) -> Option<u8> {
+
+    fn get_next_keypress(input: Arc<RwLock<WinitInputHelper>>) -> u8 {
+        let keycodes = [
+            KeyCode::Numpad0,
+            KeyCode::Numpad1,
+            KeyCode::Numpad2,
+            KeyCode::Numpad3,
+            KeyCode::Numpad4,
+            KeyCode::Numpad5,
+            KeyCode::Numpad6,
+            KeyCode::Numpad7,
+            KeyCode::Numpad8,
+            KeyCode::Numpad9,
+            KeyCode::NumpadComma,
+            KeyCode::NumpadEnter,
+            KeyCode::NumpadAdd,
+            KeyCode::NumpadSubtract,
+            KeyCode::NumpadMultiply,
+            KeyCode::NumpadDivide,
+        ];
         let key;
-        todo!();
-        let key_byte = match key {
-            0x0 => KeyCode::Numpad0,
-            0x1 => KeyCode::Numpad1,
-            0x2 => KeyCode::Numpad2,
-            0x3 => KeyCode::Numpad3,
-            0x4 => KeyCode::Numpad4,
-            0x5 => KeyCode::Numpad5,
-            0x6 => KeyCode::Numpad6,
-            0x7 => KeyCode::Numpad7,
-            0x8 => KeyCode::Numpad8,
-            0x9 => KeyCode::Numpad9,
-            0xA => KeyCode::NumpadComma,
-            0xB => KeyCode::NumpadEnter,
-            0xC => KeyCode::NumpadAdd,
-            0xD => KeyCode::NumpadSubtract,
-            0xE => KeyCode::NumpadMultiply,
-            0xF => KeyCode::NumpadDivide,
-            _ => return None,
+        'main: loop {
+            println!("looping...");
+            for cur_key in keycodes {
+                if input.read().unwrap().key_pressed(cur_key) {
+                    key = cur_key;
+                    break 'main;
+                }
+            }
+            std::thread::sleep(Duration::from_nanos(16666666));
+        }
+
+        let keycode = match key {
+            KeyCode::Numpad0 => 0x0,
+            KeyCode::Numpad1 => 0x1,
+            KeyCode::Numpad2 => 0x2,
+            KeyCode::Numpad3 => 0x3,
+            KeyCode::Numpad4 => 0x4,
+            KeyCode::Numpad5 => 0x5,
+            KeyCode::Numpad6 => 0x6,
+            KeyCode::Numpad7 => 0x7,
+            KeyCode::Numpad8 => 0x8,
+            KeyCode::Numpad9 => 0x9,
+            KeyCode::NumpadComma => 0xA,
+            KeyCode::NumpadEnter => 0xB,
+            KeyCode::NumpadAdd => 0xC,
+            KeyCode::NumpadSubtract => 0xD,
+            KeyCode::NumpadMultiply => 0xE,
+            KeyCode::NumpadDivide => 0xF,
+            _ => unreachable!(),
         };
+        println!("waited for key, got code {keycode:x}");
+        keycode
     }
 }
 
@@ -145,6 +185,7 @@ impl System for Chip8 {
             ram: Chip8Mem::new(),
             rng: StdRng::from_os_rng(),
             last_frame: Instant::now(),
+            pc_backtrace: Backtrace::new(10),
         }
     }
 
@@ -163,7 +204,7 @@ impl System for Chip8 {
 
     fn exec_instruction(
         &mut self,
-        input: Option<&Arc<RwLock<WinitInputHelper>>>
+        input: Arc<RwLock<WinitInputHelper>>
     ) -> Result<(), Box<(dyn std::error::Error + 'static)>> {
         // TODO: better timing ? waiting for vblank on draw (check details) ?
         if self.last_frame.elapsed() >= Duration::from_nanos(16666666) {
@@ -340,12 +381,12 @@ impl System for Chip8 {
             // E - INPT checking
             (0xE, b, m, l) => {
                 match (b, m, l) {
-                    //(x, 0x9, 0xE) => if chip8_get_key(window, self.v[x as usize]) {
-                    //    self.pc += 2;
-                    //},
-                    //(x, 0xA, 0x1) => if !chip8_get_key(window, self.v[x as usize]) {
-                    //    self.pc += 2;
-                    //},
+                    (x, 0x9, 0xE) => if Self::is_key_pressed(input, self.v[x as usize]) {
+                        self.pc += 2;
+                    },
+                    (x, 0xA, 0x1) => if !Self::is_key_pressed(input, self.v[x as usize]) {
+                        self.pc += 2;
+                    },
                     err => return Err(Box::new(InvalidInstructionError::new(
                                       format!("wrong operand 0x{:03X} for opcode 0xE (should be 0xE[X]9E or 0xE[X]A1)",
                                               u16::from_be_bytes([err.0, (err.1 << 4) + err.2]))
@@ -358,10 +399,7 @@ impl System for Chip8 {
                 match (x, (op_b << 4) + op_l) {
                     (x, 0x07) => self.v[x as usize] = self.delay, // MOVD
                     (x, 0x0A) => { // WAITKEY
-                        //match chip8_get_any_key(window) {
-                        //    Some(key) => self.v[x as usize] = key,
-                        //    None => self.pc -= 2,
-                        //}
+                        self.v[x as usize] = Self::get_next_keypress(input);
                     },
                     (x, 0x15) => self.delay = self.v[x as usize], // RMOVD
                     (x, 0x18) => self.sound = self.v[x as usize], // RMOVS
@@ -427,6 +465,7 @@ impl System for Chip8 {
                                 u16::from_be_bytes([(err.0 << 4) + err.1, (err.2 << 4) + err.3]))
                         ))),
         };
+        self.pc_backtrace.refresh(self.pc);
         self.pc = (self.pc + 2) & 0b0000111111111111;
         Ok(())
     }

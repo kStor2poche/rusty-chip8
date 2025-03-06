@@ -1,6 +1,8 @@
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
 
+use std::process::exit;
+
 use systems::{CHIP8_DISP_HEIGHT, CHIP8_DISP_WIDTH};
 
 //use std::hash::Hasher;
@@ -27,6 +29,7 @@ mod errors;
 mod gui;
 mod mem;
 mod systems;
+mod debug;
 use crate::{
     gui::Framework,
     systems::{Chip8, System},
@@ -45,7 +48,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // rather use GUI techniques
     let args: Vec<String> = std::env::args().collect();
-    let path = args.get(1).expect("Usage : emu [CHIP-8 program]");
+    let path = if let Some(arg) = args.get(1) {
+        arg
+    } else {
+        println!("Usage : emu [CHIP-8 program]");
+        exit(1);
+    };
     // might use clap later instead to discern between systems and have some debug options
 
     let event_loop = EventLoop::new().unwrap();
@@ -92,12 +100,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let _chip8_thread = std::thread::spawn(move || {
         loop {
-            // TODO: error handling
-            chip8_share
-                .write()
-                .unwrap()
-                .exec_instruction(Some(&input_shared))
-                .unwrap();
+            {
+                let mut chip8 = chip8_share.write().unwrap();
+                if let Err(e) = chip8.exec_instruction(input_shared.clone()) {
+                    println!("{e}");
+                    println!("{}", chip8);
+                    println!("{}", chip8.get_mem());
+                    println!("{}", chip8.get_backtrace());
+                    return;
+                }
+            }
             std::thread::sleep(Duration::from_micros(2000));
         }
     });
@@ -135,6 +147,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                 // Update internal state and request a redraw
                 // TODO: message cpu thread that this is a vblank ?
+                // TODO: probe thread to see if it's alive or juste dead
                 window_shared.request_redraw();
             }
 
