@@ -119,6 +119,7 @@ impl Chip8 {
     }
 
     fn get_next_keypress(input: Arc<RwLock<WinitInputHelper>>) -> u8 {
+        // TODO: find a proper way to do this and maybe stop using winit_input_helper
         let keycodes = [
             KeyCode::Numpad0,
             KeyCode::Numpad1,

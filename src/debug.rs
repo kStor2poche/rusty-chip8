@@ -14,7 +14,7 @@ impl<T: LowerHex + Default + Clone> Backtrace<T> {
         Self { trace: vec![T::default(); size].into_boxed_slice(), cur: 0}
     }
     pub fn refresh(&mut self, new_val: T) {
-        self.cur = if self.cur == self.trace.len() - 1 { 0 } else { self.cur + 1 };
+        self.cur = (self.cur + 1) % self.trace.len();
         self.trace[self.cur] = new_val;
     }
 }
@@ -24,15 +24,8 @@ impl<T: LowerHex + Default + Clone> Display for Backtrace<T> {
         write!(f, "PC Backtrace: ")?;
 
         let l = self.trace.len();
-        for i in self.cur+1..l {
-            write!(f, "{:x}", self.trace[i])?;
-            if i != l - 1 || self.cur != 0 {
-                write!(f, ", ")?;
-            }
-        }
-        for i in 0..self.cur {
-            write!(f, "{:x}", self.trace[i])?;
-            write!(f, ", ")?;
+        for i in 1..l {
+            write!(f, "{:x}, ", self.trace[(self.cur + i) % l])?;
         }
         write!(f, "{:x}", self.trace[self.cur])
     }

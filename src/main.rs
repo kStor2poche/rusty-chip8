@@ -91,7 +91,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let program_data = open_bytes(path)?;
     // TODO: clean error handling on rwlock thingies
     let chip8 = Arc::new(RwLock::new(Chip8::init()));
-    let _ = chip8.write().unwrap().load_program(&program_data);
+    chip8.write().unwrap().load_program(&program_data)?;
     let chip8_share = chip8.clone();
 
     // TODO: verify if it's really useful or not at the end
