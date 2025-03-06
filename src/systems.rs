@@ -7,7 +7,6 @@ use winit::keyboard::KeyCode;
 use winit_input_helper::WinitInputHelper;
 
 use crate::debug::Backtrace;
-//use crate::gui::{chip8_get_key, chip8_get_any_key};
 use crate::mem::{Chip8Mem, Memory16Bit};
 use crate::errors::{InvalidInstructionError, ProgramLoadingError, InvalidAccessError};
 
@@ -129,7 +128,7 @@ impl Chip8 {
             0x7 => KeyCode::Numpad7,
             0x8 => KeyCode::Numpad8,
             0x9 => KeyCode::Numpad9,
-            0xA => KeyCode::NumpadComma,
+            0xA => KeyCode::NumpadDecimal,
             0xB => KeyCode::NumpadEnter,
             0xC => KeyCode::NumpadAdd,
             0xD => KeyCode::NumpadSubtract,
