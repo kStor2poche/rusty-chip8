@@ -139,8 +139,7 @@ impl Chip8 {
         return input.read().unwrap().key_held(key);
     }
 
-    fn get_next_keypress(input: Arc<RwLock<WinitInputHelper>>) -> u8 {
-        // TODO: find a proper way to do this and maybe stop using winit_input_helper
+    fn probe_keypress(input: Arc<RwLock<WinitInputHelper>>) -> Option<u8> {
         let keycodes = [
             KeyCode::Numpad0,
             KeyCode::Numpad1,
@@ -159,38 +158,34 @@ impl Chip8 {
             KeyCode::NumpadMultiply,
             KeyCode::NumpadDivide,
         ];
-        let key;
-        'main: loop {
-            for cur_key in keycodes {
-                if input.read().unwrap().key_pressed(cur_key) {
-                    key = cur_key;
-                    break 'main;
+        let mut key = None;
+        for cur_key in keycodes {
+            if let Ok(input) = input.read() {
+                if input.key_pressed(cur_key) {
+                    key = Some(cur_key);
                 }
             }
-            std::thread::sleep(Duration::from_nanos(16666666));
         }
-
-        let keycode = match key {
-            KeyCode::Numpad0 => 0x0,
-            KeyCode::Numpad1 => 0x1,
-            KeyCode::Numpad2 => 0x2,
-            KeyCode::Numpad3 => 0x3,
-            KeyCode::Numpad4 => 0x4,
-            KeyCode::Numpad5 => 0x5,
-            KeyCode::Numpad6 => 0x6,
-            KeyCode::Numpad7 => 0x7,
-            KeyCode::Numpad8 => 0x8,
-            KeyCode::Numpad9 => 0x9,
-            KeyCode::NumpadComma => 0xA,
-            KeyCode::NumpadEnter => 0xB,
-            KeyCode::NumpadAdd => 0xC,
-            KeyCode::NumpadSubtract => 0xD,
-            KeyCode::NumpadMultiply => 0xE,
-            KeyCode::NumpadDivide => 0xF,
-            _ => unreachable!(),
-        };
-        println!("waited for key, got code {keycode:x}");
-        keycode
+        match key {
+            Some(KeyCode::Numpad0) => Some(0x0),
+            Some(KeyCode::Numpad1) => Some(0x1),
+            Some(KeyCode::Numpad2) => Some(0x2),
+            Some(KeyCode::Numpad3) => Some(0x3),
+            Some(KeyCode::Numpad4) => Some(0x4),
+            Some(KeyCode::Numpad5) => Some(0x5),
+            Some(KeyCode::Numpad6) => Some(0x6),
+            Some(KeyCode::Numpad7) => Some(0x7),
+            Some(KeyCode::Numpad8) => Some(0x8),
+            Some(KeyCode::Numpad9) => Some(0x9),
+            Some(KeyCode::NumpadComma) => Some(0xA),
+            Some(KeyCode::NumpadEnter) => Some(0xB),
+            Some(KeyCode::NumpadAdd) => Some(0xC),
+            Some(KeyCode::NumpadSubtract) => Some(0xD),
+            Some(KeyCode::NumpadMultiply) => Some(0xE),
+            Some(KeyCode::NumpadDivide) => Some(0xF),
+            Some(_) => unreachable!(),
+            None => None,
+        }
     }
 }
 
@@ -420,7 +415,11 @@ impl System for Chip8 {
                 match (x, (op_b << 4) + op_l) {
                     (x, 0x07) => self.v[x as usize] = self.delay, // MOVD
                     (x, 0x0A) => { // WAITKEY
-                        self.v[x as usize] = Self::get_next_keypress(input);
+                        if let Some(key) = Self::probe_keypress(input) {
+                            self.v[x as usize] = key;
+                        } else {
+                            self.pc -= 2;
+                        }
                     },
                     (x, 0x15) => self.delay = self.v[x as usize], // RMOVD
                     (x, 0x18) => self.sound = self.v[x as usize], // RMOVS

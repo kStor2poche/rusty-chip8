@@ -69,14 +69,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             .build(&event_loop)
             .unwrap()
     };
-    let window_shared = Arc::new(window);
-    let pixels_window = window_shared.clone();
 
-    let (pixels, mut framework) = {
-        let window_size = window_shared.inner_size();
-        let scale_factor = window_shared.scale_factor() as f32;
+    let (mut pixels, mut framework) = {
+        let window_size = window.inner_size();
+        let scale_factor = window.scale_factor() as f32;
         let surface_texture =
-            SurfaceTexture::new(window_size.width, window_size.height, pixels_window);
+            SurfaceTexture::new(window_size.width, window_size.height, &window);
         let pixels = Pixels::new(CHIP8_DISP_WIDTH as u32, CHIP8_DISP_HEIGHT as u32, surface_texture)?;
         let framework = Framework::new(
             &event_loop,
@@ -95,10 +93,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     chip8.write().unwrap().load_program(&program_data)?;
     let chip8_share = chip8.clone();
 
-    // TODO: verify if it's really useful or not at the end
-    let pixels_shared = Arc::new(RwLock::new(pixels));
-    let pixels_thread = pixels_shared.clone();
-
     let _chip8_thread = std::thread::spawn(move || {
         loop {
             {
@@ -111,7 +105,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     return;
                 }
             }
-            std::thread::sleep(Duration::from_micros(2000));
+            std::thread::sleep(Duration::from_micros(200));
         }
     });
 
@@ -134,11 +128,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                 // Resize the window
                 if let Some(size) = input.read().unwrap().window_resized() {
-                    if let Err(err) = pixels_shared
-                        .write()
-                        .unwrap()
-                        .resize_surface(size.width, size.height)
-                    {
+                    if let Err(err) = pixels.resize_surface(size.width, size.height) {
                         log_error("pixels.resize_surface", err);
                         elwt.exit();
                         return;
@@ -149,7 +139,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 // Update internal state and request a redraw
                 // TODO: message cpu thread that this is a vblank ?
                 // TODO: probe thread to see if it's alive or juste dead
-                window_shared.request_redraw();
+                window.request_redraw();
             }
 
             match event {
@@ -159,13 +149,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                     chip8
                         .read()
                         .unwrap()
-                        .set_pixels_frame(pixels_shared.write().unwrap().frame_mut());
+                        .set_pixels_frame(pixels.frame_mut());
 
                     // Prepare egui
-                    framework.prepare(&window_shared);
+                    framework.prepare(&window);
 
                     // Render everything together
-                    let render_result = pixels_shared.read().unwrap().render_with(
+                    let render_result = pixels.render_with(
                         |encoder, render_target, context| {
                             // Render the world texture
                             context.scaling_renderer.render(encoder, render_target);
@@ -185,7 +175,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
                 Event::WindowEvent { event, .. } => {
                     // Update egui inputs
-                    framework.handle_event(&window_shared, &event);
+                    framework.handle_event(&window, &event);
                 }
                 _ => (),
             }
