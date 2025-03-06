@@ -1,5 +1,7 @@
-# rusty-chip8
+# Rusty Chip8
 A small chip8 emulator, written in rust for learning purposes :)
 
+Some work is still needed in order to have proper gui support/usage, display, etc.
+
 ## Usage
-`cargo r --release [path/to/program]`
+`cargo r [path/to/program]`
