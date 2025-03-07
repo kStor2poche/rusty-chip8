@@ -26,6 +26,7 @@ pub struct Chip8 {
     ram: Chip8Mem,
     rng: StdRng,
     last_frame: Instant,
+    draw_allowed: bool,
     pc_backtrace: Backtrace<u16>,
 }
 
@@ -200,6 +201,7 @@ impl System for Chip8 {
             ram: Chip8Mem::new(),
             rng: StdRng::from_os_rng(),
             last_frame: Instant::now(),
+            draw_allowed: true,
             pc_backtrace: Backtrace::new(20),
         }
     }
@@ -221,9 +223,10 @@ impl System for Chip8 {
     ) -> Result<()> {
         // TODO: better timing ? waiting for vblank on draw (check details) ?
         if self.last_frame.elapsed() >= Duration::from_nanos(16666666) {
+            self.last_frame = Instant::now();
+            self.draw_allowed = true;
             self.sound = self.sound.saturating_sub(1);
             self.delay = self.delay.saturating_sub(1);
-            self.last_frame = Instant::now();
         }
         let opcode = self.ram.get(self.pc, 2)
                              .map(|op| (op[0] >> 4, op[0] & 0x0F, op[1] >> 4, op[1] & 0x0F))
@@ -377,15 +380,21 @@ impl System for Chip8 {
                 if n > 0xf {
                     unreachable!("Trying to draw a sprite with height {} > 0xf. This _should_ be impossible.", n);
                 }
-                // TODO: maybe directly take and pass address rather than sprite to load_sprite
-                let sprite = self.ram.get(self.i, n as u16).context("while fetching a sprite")?.to_owned();
-                self.v[0xF] = match Chip8Mem::load_sprite(&mut self.ram,
-                                                          &sprite,
-                                                          self.v[x as usize],
-                                                          self.v[y as usize],
-                                                          n) {
-                    Ok(flag) => flag as u8,
-                    Err(err) => return Err(err),
+                if self.draw_allowed {
+                    self.draw_allowed = false;
+                    let sprite = self.ram.get(self.i, n as u16).context("while fetching a sprite")?.to_owned();
+                    // TODO: maybe directly take and pass address rather than sprite to load_sprite
+                    self.v[0xF] = match Chip8Mem::load_sprite(&mut self.ram,
+                                                              &sprite,
+                                                              self.v[x as usize],
+                                                              self.v[y as usize],
+                                                              n) {
+                        Ok(flag) => flag as u8,
+                        Err(err) => return Err(err),
+                    }
+                } else {
+                    std::thread::sleep(Duration::from_micros(16666).saturating_sub(self.last_frame.elapsed()));
+                    self.pc -= 2;
                 }
             },
 
