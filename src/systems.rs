@@ -209,7 +209,7 @@ impl System for Chip8 {
     fn load_program(&mut self, program_data: &[u8]) -> Result<()> {
         if program_data.len() > CHIP8_MAX_PROG_SIZE as usize {
             return Err(anyhow!(ProgramLoadingError::new(format!(
-                            "Program too long, {}B > 3,328 KB",
+                            "Program too long, {} KB > 3,328 KB",
                             program_data.len()
                             ))))
         }
