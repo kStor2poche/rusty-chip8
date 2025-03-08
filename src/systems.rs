@@ -1,19 +1,25 @@
-use std::sync::{Arc, RwLock};
-use std::time::{Instant, Duration};
-use rand::SeedableRng;
-use rand::{Rng, rngs::StdRng};
-use winit::keyboard::KeyCode;
-use winit_input_helper::WinitInputHelper;
-use anyhow::{anyhow, Context, Result};
+use {
+    anyhow::{anyhow, Context, Result},
+    rand::{Rng, rngs::StdRng, SeedableRng},
+    rodio::{Sink, source::SineWave, Source},
+    std::{
+        sync::{Arc, RwLock},
+        time::{Instant, Duration},
+    },
+    winit::keyboard::KeyCode,
+    winit_input_helper::WinitInputHelper,
+};
 
-use crate::debug::Backtrace;
-use crate::mem::{Chip8Mem, Memory16Bit};
-use crate::errors::{InvalidInstructionError, ProgramLoadingError, InvalidAccessError};
+use crate::{
+    debug::Backtrace,
+    mem::{Chip8Mem, Memory16Bit},
+    errors::{InvalidInstructionError, ProgramLoadingError, InvalidAccessError},
+};
 
 pub trait System {
     fn init() -> Self;
     fn load_program(&mut self, program_data: &[u8]) -> Result<()>;
-    fn exec_instruction(&mut self, input: Arc<RwLock<WinitInputHelper>>) -> Result<()>;
+    fn exec_instruction(&mut self, input: Arc<RwLock<WinitInputHelper>>, sink: Option<&Sink>) -> Result<()>;
 }
 
 pub struct Chip8 {
@@ -219,7 +225,8 @@ impl System for Chip8 {
 
     fn exec_instruction(
         &mut self,
-        input: Arc<RwLock<WinitInputHelper>>
+        input: Arc<RwLock<WinitInputHelper>>,
+        sink: Option<&Sink>,
     ) -> Result<()> {
         // TODO: better timing ? waiting for vblank on draw (check details) ?
         if self.last_frame.elapsed() >= Duration::from_nanos(16666666) {
@@ -426,7 +433,15 @@ impl System for Chip8 {
                         }
                     },
                     (x, 0x15) => self.delay = self.v[x as usize], // RMOVD
-                    (x, 0x18) => self.sound = self.v[x as usize], // RMOVS
+                    (x, 0x18) => { // RMOVS
+                        self.sound = self.v[x as usize];
+                        if let Some(sink) = sink {
+                            let source = SineWave::new(440.0) // TODO: custom square wave ?
+                                .take_duration(Duration::from_secs_f64(0.016666666 * self.sound as f64))
+                                .amplify(0.20);
+                            sink.append(source);
+                        }
+                    },
                     (x, 0x1E) => { // ADDI
                         self.i = (self.i + self.v[x as usize] as u16) & 0b0000111111111111;
                         // self.v[0xF] = 1; // if u12 overflows (on amiga at least)

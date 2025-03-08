@@ -1,9 +1,8 @@
-use winit::keyboard::Key;
-
 use {
     anyhow::Result,
     log::error,
     pixels::{Pixels, SurfaceTexture},
+    rodio::{OutputStream, Sink},
     std::{
         sync::{Arc, RwLock},
         time::Duration,
@@ -13,7 +12,7 @@ use {
         dpi::LogicalSize,
         event::{Event, WindowEvent},
         event_loop::EventLoop,
-        keyboard::KeyCode,
+        keyboard::{KeyCode, Key},
         window::WindowBuilder,
     },
     winit_input_helper::WinitInputHelper,
@@ -85,9 +84,11 @@ fn main() -> Result<()> {
     let chip8_share = chip8.clone();
 
     let chip8_thread = std::thread::spawn(move || {
+    let stream_handle = OutputStream::try_default().expect("No sound output available. This SHOULDN'T panic but a weird (rodio ?) bug forces me to do this.");
+        let sink = Sink::try_new(&stream_handle.1).ok();
         loop {
             let mut chip8 = chip8_share.write().expect("Lock poisoned");
-            if let Err(e) = chip8.exec_instruction(input_shared.clone()) {
+            if let Err(e) = chip8.exec_instruction(input_shared.clone(), sink.as_ref()) {
                 println!("{e}");
                 println!("{}", chip8.get_state());
                 println!("{}", chip8.get_mem());
