@@ -5,8 +5,7 @@ use crate::{
 
 fn sprite_string(sprite: Vec<u8>) -> String {
     let mut res = String::new();
-    for i in 0..sprite.len() - 1 {
-        let c = sprite[i];
+    for c in &sprite {
         res.push_str(
             String::from_iter([
                 if c & 0b10000000 == 0b10000000 {'█'} else {'░'},

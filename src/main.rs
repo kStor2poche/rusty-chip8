@@ -84,7 +84,7 @@ fn main() -> Result<()> {
     let chip8_share = chip8.clone();
 
     let chip8_thread = std::thread::spawn(move || {
-    let stream_handle = OutputStream::try_default().expect("No sound output available. This SHOULDN'T panic but a weird (rodio ?) bug forces me to do this.");
+        let stream_handle = OutputStream::try_default().expect("No sound output available. This SHOULDN'T panic but a weird (rodio ?) bug forces me to do this.");
         let sink = Sink::try_new(&stream_handle.1).ok();
         loop {
             let mut chip8 = chip8_share.write().expect("Lock poisoned");

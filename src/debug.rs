@@ -22,12 +22,12 @@ impl<T: LowerHex + Default + Clone> Backtrace<T> {
 
 impl<T: LowerHex + Default + Clone> Display for Backtrace<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "\x1b[1mBacktrace:\x1b[0m\n")?;
+        writeln!(f, "\x1b[1mBacktrace:\x1b[0m")?;
 
         let l = self.trace.len();
         for i in 1..l {
             let (addr, instr) = &self.trace[(self.cur + i) % l];
-            write!(f, "{:x}: {}\n", addr, instr)?;
+            writeln!(f, "{:x}: {}", addr, instr)?;
         }
         let (addr, instr) = &self.trace[self.cur];
         write!(f, "{:x}: {}", addr, instr)
@@ -38,7 +38,7 @@ impl Display for Chip8State {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = self;
         let next_instr = s.ram.get(s.pc, 0x2).unwrap();
-        write!(f, "\x1b[1mCurrent state : \x1b[0m\n\
+        writeln!(f, "\x1b[1mCurrent state : \x1b[0m\n\
                    I : 0x{:03x}  \
                    SP : 0x{:03x}  \
                    PC : 0x{:03x} -> 0x{21:04x} (next instruction)\n\
@@ -59,7 +59,7 @@ impl Display for Chip8State {
                    VE : 0x{:02x}  \
                    VF : 0x{:02x}\n\
                    delay : 0x{:02x}  \
-                   sound : 0x{:02x}\n",
+                   sound : 0x{:02x}",
                    s.i, s.sp, s.pc,
                    s.v[0], s.v[1], s.v[2],   s.v[3],   s.v[4],   s.v[5],   s.v[6],   s.v[7],
                    s.v[8], s.v[9], s.v[0xA], s.v[0xB], s.v[0xC], s.v[0xD], s.v[0xE], s.v[0xF],
